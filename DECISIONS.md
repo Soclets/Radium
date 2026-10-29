@@ -492,6 +492,46 @@ Documents", which clashes with Radium being written largely by Claude sessions. 
 definitely not a good idea anymore" — **MISRA's documents are not used**, bought or otherwise, and its rule text must
 not enter the project.
 
+## D45 — Branches and a local merge bot (2026-10-30)
+
+Owner suggested a merge bot and automatic tests, noting CyborgPL's tests are slow enough to run locally; design
+claude proposed the shape, owner: "yes". No pull requests: sessions work with the owner present, so a PR would only
+ask for the same approval twice.
+
+1. A session commits to **its own branch** (e.g. `compiler/termination-check`), never to `main`, and pushes that
+   branch.
+2. A **local merge bot** on the owner's Mac notices the new commit, merges it with the latest `main` in a separate
+   scratch folder, and runs the **full** test suite there.
+3. It reports the result on the commit through GitHub's commit-status API (`radium/full-tests: passed` / `failed`,
+   with a summary). GitHub runs nothing; the tick means the whole suite passed. (A tick for quick checks only was
+   rejected, owner: "What's the green tick for, if it doesn't say everything passed".)
+4. Passed: the bot moves `main` forward and pushes it. Failed: `main` is untouched; the branch is fixed and pushed
+   again.
+
+The bot is the only thing that merges into `main`. No GitHub Actions and no self-hosted runner, so nothing from GitHub
+runs on the Mac. Takes effect with the first code; until then the design session commits and pushes when the owner
+says so.
+
+## D46 — Languages in the repo, and the two builds (2026-10-30)
+
+Proposed by design claude, owner: "yes"; CMake by the owner ("CMake when C++ comes").
+
+| Kind of file | Language |
+|---|---|
+| Compiler, runtime, proof checker, oracles | Rust |
+| LLVM wrapper and custom passes | C++ |
+| Building the C++ | CMake, from the first C++ file |
+| `std` compound, examples, tests | Radium |
+| Tools and scripts (merge bot, D18 checker, generators, benchmarks) | Rust; no shell, no Python |
+| Docs | Markdown |
+| Config | TOML (Cargo), and only the formats a tool requires (`.clang-tidy`, `.clang-format`, `.gitignore`) |
+
+Anything else (Python, shell, Go, …) needs the owner's explicit OK as an exception.
+
+**The two builds stay separate** (owner, on running CMake through Cargo: "What's next? Compiling SPARK via Cargo?"):
+CMake builds the C++ into a library; `cargo build` builds the Rust and links to it where CMake left it. Neither drives
+the other. The order (CMake first, then Cargo) is written in the README and run by the merge bot (D45).
+
 ---
 
 ## Open
