@@ -33,12 +33,26 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | handler collection | `HandlerCollection` | A named, reusable group of handler arms | D11 | |
 | proof certificate | `ProofCertificate` | A solver's step-by-step proof, re-checked by the proof checker | D12 | |
 | proof checker | `ProofChecker` | The small, Verus-verified program that re-checks proof certificates | D12, D16 | |
+| isotope | `Isotope` | A compiler extension: trusted, not proven | D23 | plugin, limb |
+| compound | `Compound` | A library written in Radium: proven like any other code | D23 | kit, package |
 | range | `Range` | The `min`/`max` refinement on a fixed-width integer | D14 | |
+| narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
+| own-function mark | — | The mark on every use of the writer's own function (`my.x`) | D43 | |
 | section marker | — | `// section a.b:` … `// end section a.b` | D18 | |
 | trace tag | — | `// trace D<n>` | D18 | |
 
-People: **owner** — the person who decides Radium's design. **writer** — whoever writes a Radium program. (From
-CyborgPL's usage; not yet decided for Radium.)
+## People
+
+Same words as CyborgPL (D21).
+
+| Term | Meaning |
+|---|---|
+| owner | The one person who decides Radium's design |
+| author | The founder |
+| authors | The main contributors: the owner and the Claude sessions |
+| contributors | Outside people who contribute |
+| writer | Whoever writes a Radium program |
+| user | Whoever uses a writer's final product |
 
 ## Allowed abbreviations
 
