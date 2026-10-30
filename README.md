@@ -1,3 +1,5 @@
+<p align="center"><img src="brand/mark-amber.svg" width="128" height="128" alt="Radium logo: an R inside its own wall, in warm amber"></p>
+
 # Radium
 
 *Slowly kills you via the steep learning curve, and slow compile times. Glow in the dark via the clear syntax. It
@@ -14,6 +16,8 @@ There is no compiler yet. This repository holds the design:
 - [`TERMS.md`](TERMS.md) — one name per concept, and the allowed abbreviations.
 - [`design-rules/`](design-rules/) — the general rules the design is judged by: clear syntax, choosing words,
   dots and underscores, brackets, marks, defaults.
+- [`brand/`](brand/) — the logo: [`mark-amber.svg`](brand/mark-amber.svg) (main), [`mark-black.svg`](brand/mark-black.svg)
+  and [`mark-white.svg`](brand/mark-white.svg), and the rounds of concepts that led to it in `brand/concepts/`.
 
 ## Licences
 

@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 300" width="560" height="300">
+  <title>Radium logo concepts: D closed along the bottom</title>
+  <rect width="560" height="300" fill="#0b1510"/>
+
+  <!-- G: D with a line along the bottom from the stem's foot to the leg's foot, dipping slightly as drawn -->
+  <g transform="translate(20,20)" fill="none" stroke="#5de08a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="240" height="240" rx="28" fill="#0f1f17" stroke="none"/>
+    <path d="M56 76 V206"/>
+    <path d="M56 76 H100 A32 32 0 0 1 100 140 H56"/>
+    <path d="M84 140 L150 206 V108 A50 50 0 0 0 100 58 H56"/>
+    <path d="M56 206 Q100 218 150 206"/>
+  </g>
+  <text x="140" y="285" fill="#9fe8b6" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle">G: bottom line, slight dip (as drawn)</text>
+
+  <!-- H: the same, with a straight bottom line -->
+  <g transform="translate(300,20)" fill="none" stroke="#5de08a" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="0" y="0" width="240" height="240" rx="28" fill="#0f1f17" stroke="none"/>
+    <path d="M56 76 V206"/>
+    <path d="M56 76 H100 A32 32 0 0 1 100 140 H56"/>
+    <path d="M84 140 L150 206 V108 A50 50 0 0 0 100 58 H56"/>
+    <path d="M56 206 H150"/>
+  </g>
+  <text x="420" y="285" fill="#9fe8b6" font-family="Helvetica, Arial, sans-serif" font-size="14" text-anchor="middle">H: bottom line, straight</text>
+</svg>

@@ -11,7 +11,7 @@ A bare name has a default **only where one is genuinely sensible** (owner, D27).
 2. **is what almost every use wants and expects** — `and`/`or` short-circuit; a parameter is `var.immut`;
    `std::print` prints the shortest way to the screen.
 
-Where no default is sensible, there is none: a bare `int` takes its width and sign from its range, never a fixed 32
+Where no default is sensible, there is none: a bare `int` takes its width and sign from its bounds, never a fixed 32
 bits.
 
 ## Spelling out a default

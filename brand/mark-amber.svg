@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="240" height="240">
+  <title>Radium mark, warm amber</title>
+  <rect width="240" height="240" rx="34" fill="#1a0f05"/>
+  <g fill="none" stroke="#ff9a3c" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M64 48 V196"/>
+    <path d="M64 48 H132 A40 40 0 0 1 172 88 V196"/>
+    <path d="M172 88 A40 40 0 0 1 132 128 H64"/>
+    <path d="M92 128 L172 196"/>
+    <path d="M64 196 Q118 207 172 196"/>
+  </g>
+</svg>

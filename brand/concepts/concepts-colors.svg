@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 580 350" width="580" height="350">
+  <title>Radium logo concept G in different colours</title>
+  <defs>
+    <g id="mark" fill="none" stroke="currentColor" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M56 76 V206"/>
+      <path d="M56 76 H100 A32 32 0 0 1 100 140 H56"/>
+      <path d="M84 140 L150 206 V108 A50 50 0 0 0 100 58 H56"/>
+      <path d="M56 206 Q100 218 150 206"/>
+    </g>
+  </defs>
+  <rect width="580" height="350" fill="#e9ece9"/>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="11" text-anchor="middle" fill="#2b2f2c">
+
+    <rect x="20" y="20" width="120" height="120" rx="16" fill="#0f1f17"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(28,24) scale(0.5)" color="#5de08a"/>
+    <text x="80" y="156">1 Radium paint green</text>
+
+    <rect x="160" y="20" width="120" height="120" rx="16" fill="#0b1220"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(168,24) scale(0.5)" color="#9fd8ff"/>
+    <text x="220" y="156">2 Radium's own blue glow</text>
+
+    <rect x="300" y="20" width="120" height="120" rx="16" fill="#050b1a"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(308,24) scale(0.5)" color="#3fa9ff"/>
+    <text x="360" y="156">3 Cherenkov blue</text>
+
+    <rect x="440" y="20" width="120" height="120" rx="16" fill="#141a05"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(448,24) scale(0.5)" color="#c6ff3d"/>
+    <text x="500" y="156">4 Uranium glass</text>
+
+    <rect x="20" y="180" width="120" height="120" rx="16" fill="#121212"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(28,184) scale(0.5)" color="#ffd000"/>
+    <text x="80" y="316">5 Hazard yellow</text>
+
+    <rect x="160" y="180" width="120" height="120" rx="16" fill="#1a0f05"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(168,184) scale(0.5)" color="#ff9a3c"/>
+    <text x="220" y="316">6 Warm amber</text>
+
+    <rect x="300" y="180" width="120" height="120" rx="16" fill="#0d0d0d"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(308,184) scale(0.5)" color="#f2f2f2"/>
+    <text x="360" y="316">7 White on black</text>
+
+    <rect x="440" y="180" width="120" height="120" rx="16" fill="#ffffff" stroke="#c9cec9"/>
+    <use xlink:href="#mark" href="#mark" transform="translate(448,184) scale(0.5)" color="#111111"/>
+    <text x="500" y="316">8 Black on white</text>
+  </g>
+</svg>

@@ -1028,6 +1028,193 @@ Owner asked "where's `array`, and who owns `list`?"; design claude proposed, own
   against the heap budget (D8). D64's and D66's spellings gain the `std::` prefix.
 - A list owns its items (D5); they are dropped with it.
 
+## D71 — `if`, `else if`, `else` (2026-10-30)
+
+Proposed by design claude, owner: "yes". Other branches of an `if` are **`else if …:`** and **`else:`**, and the
+whole chain closes with **one `end if`**:
+
+```
+if $celsius > 30:
+    std::print("hot");
+else if $celsius > 20:
+    std::print("warm");
+else:
+    std::print("cold");
+end if
+```
+
+The condition must be a `bool` (D60).
+
+## D72 — `match` (2026-10-30)
+
+Proposed by design claude, owner: "yes". Choosing between a `union.tagged`'s cases (D59) is **`match`**, with
+**`case …:`** branches continuing the block and one **`end match`**. A case pulls out its data by label
+(`[code = $c]` binds `$c`):
+
+```
+match $s:
+    case status.ok:
+        std::print("all good");
+    case status.warming_up:
+        std::print("wait");
+    case status.failed[code = $c]:
+        std::print("failed with code ", $c);
+end match
+```
+
+**Every case must be covered**, or the compiler refuses. **Branches never fall through.** (`switch` was avoided:
+C's fall-through trap; `when` is Kotlin-only.)
+
+## D73 — Counting loops (2026-10-30)
+
+Chosen by cold tests with the owner. Round 1: `to:` read correctly, but `until:` read as including the end, `by: 2`
+read as "times 2", and `from: 5, to: 1` drew "what". Round 2: `before:` read correctly; `every: 3` read as time;
+the owner proposed a negative step for counting down, then `step_by` ("step_by?"), over `step:` and `steps:`
+(which risk reading as a count). Owner: "yes".
+
+```
+for $i [from: 1, to: 5]:                   // 1, 2, 3, 4, 5
+for $i [from: 1, before: 5]:               // 1, 2, 3, 4
+for $i [from: 0, to: 10, step_by: 2]:      // 0, 2, 4, 6, 8, 10
+for $i [from: 5, to: 1, step_by: -1]:      // 5, 4, 3, 2, 1
+```
+
+(Loop headers only; each loop closes with `end for`.) **Respelled by D74:** `for $i in range[from: 1, to: 5]:`.
+
+## D74 — `for … in`, `range`, and "bounds" (2026-10-30)
+
+Owner proposed `for $r in $readings`; design claude pointed out it would give `for` two shapes and proposed `in`
+everywhere with a range value; owner asked "Is `in range` accurate?" — design claude found "range" already meant a
+type's `min`/`max` (D14) — and the owner proposed calling those `bounds` instead. Owner: "yes".
+
+- **Every loop is `for $x in …:`** — a collection or a range:
+  ```
+  for $r in $readings:                              // a std::list, front to back
+  for $i in range[from: 1, to: 5]:                  // 1, 2, 3, 4, 5
+  for $i in range[from: 0, to: 10, step_by: 2]:     // D73's labels, inside range[…]
+  ```
+  A `map.sorted`/`map.inserted` goes in its named order; a `map.unordered` can't be gone through (D66), so is
+  refused.
+- **`range[…]`** is a value describing a sequence of numbers (`[ ]` describes, D50), so it can be stored and passed.
+- **A type's `min`/`max` are its "bounds"** (exact in maths: lower and upper bounds), not its "range". Earlier
+  decisions that say "range" for these (D14, D24, D27, D64, …) mean bounds.
+- **A generic's `[?T: ordered]` is a "requirement"** ("`?T` requires `ordered`"), not a "bound", which now means
+  value limits. (D69's wording is read that way.)
+
+## D75 — `while` (2026-10-30)
+
+Proposed by design claude, owner: "yup". **`while …:` … `end while`** runs while its `bool` condition holds. It must
+provably end (D7): Geiger works out why where it can, and otherwise asks for a **`decreases`** line — a value that
+shrinks every trip and can't go below zero. `decreases` and loop **invariants** (D4) sit at the top of the loop's
+body, like contracts at the top of a function (D53):
+
+```
+while $remaining > 0:
+    decreases $remaining;
+    …
+end while
+```
+
+`for` over a range or a collection ends by its nature. A loop meant to run forever is `forever` (D7).
+
+## D76 — `forever` (2026-10-30)
+
+Proposed by design claude, owner: "yes". The loop allowed to run without end (D7) is **`forever:` … `end forever`**;
+each trip must provably end. One searchable word lists every place a program can run endlessly. (Rust's `loop` is the
+settled word but says nothing special — every loop is a loop; `while true` would hide the exception inside an
+ordinary `while`.)
+
+## D77 — `break`, and no skip statement (2026-10-30)
+
+Chosen by cold tests with the owner, owner: "yes". **`break;`** stops the loop it is in (read correctly cold: "the
+loop stops when `$i` reaches 3"). It works in `for`, `while` and `forever`.
+
+**There is no "skip to the next trip" statement.** Five candidates failed the cold test: `continue` (read as carrying
+on), `skip` (read as skipping the whole loop), `next`, `skip_rest`, `skip_this`. (`stop`, tested as an alternative to
+`break`, read as ending the whole program.) Writing the condition around the work instead read correctly at once ("if `$i` doesn't
+equal 3, print `$i`"):
+
+```
+for $i in range[from: 1, to: 5]:
+    if $i not_equal 3:
+        std::print($i);
+    end if
+end for
+```
+
+Proposed by design claude, owner: "yes": **a loop may be named** (a named block, D13) — `for rows $row in $grid:` …
+`end for rows` — and **`break rows;`** stops that loop and every loop inside it. A bare `break;` stops the innermost
+loop.
+
+```
+for rows $row in $grid:
+    for $cell in $row:
+        if $cell equal $target:
+            break rows;
+        end if
+    end for
+end for rows
+```
+
+## D78 — `otherwise`: handling failures at a call (2026-10-30)
+
+Proposed by design claude, owner: "`otherwise`". A call that can fail (D56) is followed by **`otherwise:`**, with a
+**`case`** per failure still possible at that call (D11), closed by **`end otherwise`**:
+
+```
+var $w = first_word($text, limit: 20) otherwise:
+    case too_long:
+        "…";
+    case empty:
+        "(none)";
+end otherwise
+```
+
+(`catch` was avoided: it implies exceptions, which D11 rules out; `else` belongs to `if`.) What an arm's last line
+means (the value used in place of the result, as above) is provisional.
+
+Proposed by design claude, owner: "yes": **handler narrowings at a call** (D11, D57). A `narrowings.handler` block
+names sets of arms, each written with `case` as in `match`; a call uses one with a one-line
+**`otherwise word_failed.use_placeholder;`**:
+
+```
+narrowings.handler word_failed:
+    word_failed.use_placeholder:
+        case too_long:
+            "…";
+        case empty:
+            "(none)";
+    end word_failed.use_placeholder
+end narrowings.handler word_failed
+
+var $a = first_word($text, limit: 20) otherwise word_failed.use_placeholder;
+```
+
+The arms act as if written at the call, so `return`, `break` and failing apply there. They must cover every failure
+still possible at that call; extra arms are allowed and reported as unused there. A bare collection name is its own
+handler, if it defines one.
+
+- **`to:`** includes the end; **`before:`** stops before it.
+- **`step_by:`** is the amount added each time; it defaults to 1 (D42); a negative step counts down (as Rust's
+  `.step_by`).
+- A loop whose step can never reach its end (`from: 5, to: 1` with no negative step) is refused.
+- Such a loop provably ends (D7).
+
+## D79 — The logo (2026-10-30)
+
+Owner's design, drawn out by design claude in rounds (`brand/concepts/`). An **R** whose front leg's foot sends a line
+**straight up and over, following the R's head** (owner: "a line that goes up from the front leg, and curve by
+following the R's head"), and **a line along the bottom** from the stem's foot to the leg's foot, dipping slightly
+(owner's drawing). The R sits inside its own closed wall — readable as the safety radius (D6).
+
+**One version everywhere** (owner: "Small size ver everywhere is good"): the rising line is merged into the head, so
+nothing is doubled; strokes are thick enough for 16 px; the lower counter is opened so it doesn't read as a "B".
+Files: `brand/mark-black.svg`, `brand/mark-white.svg` (240×240 grid, stroke 22, round caps and joins).
+
+Colours: **warm amber is the main colour** — `#ff9a3c` on `#1a0f05` (owner, from a shortlist of radium's pale-blue
+glow and Cherenkov blue). The mono versions (white on black, black on white) are kept for single-colour use. File:
+`brand/mark-amber.svg`.
+
 ---
 
 ## Open

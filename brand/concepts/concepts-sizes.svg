@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 620 840" width="620" height="840">
+  <title>Radium logo concept G at different sizes</title>
+  <defs>
+    <g id="mark" fill="none" stroke="currentColor" stroke-width="15" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M56 76 V206"/>
+      <path d="M56 76 H100 A32 32 0 0 1 100 140 H56"/>
+      <path d="M84 140 L150 206 V108 A50 50 0 0 0 100 58 H56"/>
+      <path d="M56 206 Q100 218 150 206"/>
+    </g>
+  </defs>
+  <rect width="620" height="840" fill="#e9ece9"/>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#2b2f2c">
+    <text x="20" y="102">2 Radium's blue glow</text>
+    <rect x="150" y="142" width="16" height="16" rx="2" fill="#0b1220"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(150,142) scale(0.0667)" color="#9fd8ff"/>
+    <rect x="186" y="134" width="24" height="24" rx="2.9" fill="#0b1220"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(186,134) scale(0.1000)" color="#9fd8ff"/>
+    <rect x="230" y="126" width="32" height="32" rx="3.8" fill="#0b1220"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(230,126) scale(0.1333)" color="#9fd8ff"/>
+    <rect x="282" y="110" width="48" height="48" rx="5.8" fill="#0b1220"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(282,110) scale(0.2000)" color="#9fd8ff"/>
+    <rect x="350" y="94" width="64" height="64" rx="7.7" fill="#0b1220"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(350,94) scale(0.2667)" color="#9fd8ff"/>
+    <rect x="434" y="30" width="128" height="128" rx="15.4" fill="#0b1220"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(434,30) scale(0.5333)" color="#9fd8ff"/>
+    <text x="20" y="262">3 Cherenkov blue</text>
+    <rect x="150" y="302" width="16" height="16" rx="2" fill="#050b1a"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(150,302) scale(0.0667)" color="#3fa9ff"/>
+    <rect x="186" y="294" width="24" height="24" rx="2.9" fill="#050b1a"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(186,294) scale(0.1000)" color="#3fa9ff"/>
+    <rect x="230" y="286" width="32" height="32" rx="3.8" fill="#050b1a"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(230,286) scale(0.1333)" color="#3fa9ff"/>
+    <rect x="282" y="270" width="48" height="48" rx="5.8" fill="#050b1a"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(282,270) scale(0.2000)" color="#3fa9ff"/>
+    <rect x="350" y="254" width="64" height="64" rx="7.7" fill="#050b1a"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(350,254) scale(0.2667)" color="#3fa9ff"/>
+    <rect x="434" y="190" width="128" height="128" rx="15.4" fill="#050b1a"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(434,190) scale(0.5333)" color="#3fa9ff"/>
+    <text x="20" y="422">6 Warm amber</text>
+    <rect x="150" y="462" width="16" height="16" rx="2" fill="#1a0f05"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(150,462) scale(0.0667)" color="#ff9a3c"/>
+    <rect x="186" y="454" width="24" height="24" rx="2.9" fill="#1a0f05"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(186,454) scale(0.1000)" color="#ff9a3c"/>
+    <rect x="230" y="446" width="32" height="32" rx="3.8" fill="#1a0f05"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(230,446) scale(0.1333)" color="#ff9a3c"/>
+    <rect x="282" y="430" width="48" height="48" rx="5.8" fill="#1a0f05"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(282,430) scale(0.2000)" color="#ff9a3c"/>
+    <rect x="350" y="414" width="64" height="64" rx="7.7" fill="#1a0f05"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(350,414) scale(0.2667)" color="#ff9a3c"/>
+    <rect x="434" y="350" width="128" height="128" rx="15.4" fill="#1a0f05"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(434,350) scale(0.5333)" color="#ff9a3c"/>
+    <text x="20" y="582">7 White on black</text>
+    <rect x="150" y="622" width="16" height="16" rx="2" fill="#0d0d0d"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(150,622) scale(0.0667)" color="#f2f2f2"/>
+    <rect x="186" y="614" width="24" height="24" rx="2.9" fill="#0d0d0d"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(186,614) scale(0.1000)" color="#f2f2f2"/>
+    <rect x="230" y="606" width="32" height="32" rx="3.8" fill="#0d0d0d"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(230,606) scale(0.1333)" color="#f2f2f2"/>
+    <rect x="282" y="590" width="48" height="48" rx="5.8" fill="#0d0d0d"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(282,590) scale(0.2000)" color="#f2f2f2"/>
+    <rect x="350" y="574" width="64" height="64" rx="7.7" fill="#0d0d0d"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(350,574) scale(0.2667)" color="#f2f2f2"/>
+    <rect x="434" y="510" width="128" height="128" rx="15.4" fill="#0d0d0d"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(434,510) scale(0.5333)" color="#f2f2f2"/>
+    <text x="20" y="742">8 Black on white</text>
+    <rect x="150" y="782" width="16" height="16" rx="2" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(150,782) scale(0.0667)" color="#111111"/>
+    <text x="158.0" y="816" text-anchor="middle">16px</text>
+    <rect x="186" y="774" width="24" height="24" rx="2.9" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(186,774) scale(0.1000)" color="#111111"/>
+    <text x="198.0" y="816" text-anchor="middle">24px</text>
+    <rect x="230" y="766" width="32" height="32" rx="3.8" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(230,766) scale(0.1333)" color="#111111"/>
+    <text x="246.0" y="816" text-anchor="middle">32px</text>
+    <rect x="282" y="750" width="48" height="48" rx="5.8" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(282,750) scale(0.2000)" color="#111111"/>
+    <text x="306.0" y="816" text-anchor="middle">48px</text>
+    <rect x="350" y="734" width="64" height="64" rx="7.7" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(350,734) scale(0.2667)" color="#111111"/>
+    <text x="382.0" y="816" text-anchor="middle">64px</text>
+    <rect x="434" y="670" width="128" height="128" rx="15.4" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#mark" xlink:href="#mark" transform="translate(434,670) scale(0.5333)" color="#111111"/>
+    <text x="498.0" y="816" text-anchor="middle">128px</text>
+  </g>
+</svg>

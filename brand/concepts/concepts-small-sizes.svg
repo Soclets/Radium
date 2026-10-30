@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 640 460" width="640" height="460">
+  <title>Radium mark: full version vs small-size version at small sizes</title>
+  <defs><g id="full" fill="none" stroke="currentColor" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"><path d="M56 76 V206"/><path d="M56 76 H100 A32 32 0 0 1 100 140 H56"/><path d="M84 140 L150 206 V108 A50 50 0 0 0 100 58 H56"/><path d="M56 206 Q100 218 150 206"/></g><g id="small" fill="none" stroke="currentColor" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"><path d="M64 48 V196"/><path d="M64 48 H132 A40 40 0 0 1 172 88 V196"/><path d="M172 88 A40 40 0 0 1 132 128 H64"/><path d="M92 128 L172 196"/><path d="M64 196 Q118 207 172 196"/></g></defs>
+  <rect width="640" height="460" fill="#e9ece9"/>
+  <g font-family="Helvetica, Arial, sans-serif" font-size="12" fill="#2b2f2c">
+    <text x="150" y="24">full version</text>
+    <text x="400" y="24">small-size version</text>
+    <text x="16" y="70">2 Radium's blue glow</text>
+    <rect x="150" y="72" width="16" height="16" rx="2.2" fill="#0b1220"/>
+    <use href="#full" xlink:href="#full" transform="translate(150,72) scale(0.0667)" color="#9fd8ff"/>
+    <rect x="180" y="64" width="24" height="24" rx="3.4" fill="#0b1220"/>
+    <use href="#full" xlink:href="#full" transform="translate(180,64) scale(0.1000)" color="#9fd8ff"/>
+    <rect x="218" y="56" width="32" height="32" rx="4.5" fill="#0b1220"/>
+    <use href="#full" xlink:href="#full" transform="translate(218,56) scale(0.1333)" color="#9fd8ff"/>
+    <rect x="264" y="40" width="48" height="48" rx="6.7" fill="#0b1220"/>
+    <use href="#full" xlink:href="#full" transform="translate(264,40) scale(0.2000)" color="#9fd8ff"/>
+    <rect x="400" y="72" width="16" height="16" rx="2.2" fill="#0b1220"/>
+    <use href="#small" xlink:href="#small" transform="translate(400,72) scale(0.0667)" color="#9fd8ff"/>
+    <rect x="430" y="64" width="24" height="24" rx="3.4" fill="#0b1220"/>
+    <use href="#small" xlink:href="#small" transform="translate(430,64) scale(0.1000)" color="#9fd8ff"/>
+    <rect x="468" y="56" width="32" height="32" rx="4.5" fill="#0b1220"/>
+    <use href="#small" xlink:href="#small" transform="translate(468,56) scale(0.1333)" color="#9fd8ff"/>
+    <rect x="514" y="40" width="48" height="48" rx="6.7" fill="#0b1220"/>
+    <use href="#small" xlink:href="#small" transform="translate(514,40) scale(0.2000)" color="#9fd8ff"/>
+    <text x="16" y="150">3 Cherenkov blue</text>
+    <rect x="150" y="152" width="16" height="16" rx="2.2" fill="#050b1a"/>
+    <use href="#full" xlink:href="#full" transform="translate(150,152) scale(0.0667)" color="#3fa9ff"/>
+    <rect x="180" y="144" width="24" height="24" rx="3.4" fill="#050b1a"/>
+    <use href="#full" xlink:href="#full" transform="translate(180,144) scale(0.1000)" color="#3fa9ff"/>
+    <rect x="218" y="136" width="32" height="32" rx="4.5" fill="#050b1a"/>
+    <use href="#full" xlink:href="#full" transform="translate(218,136) scale(0.1333)" color="#3fa9ff"/>
+    <rect x="264" y="120" width="48" height="48" rx="6.7" fill="#050b1a"/>
+    <use href="#full" xlink:href="#full" transform="translate(264,120) scale(0.2000)" color="#3fa9ff"/>
+    <rect x="400" y="152" width="16" height="16" rx="2.2" fill="#050b1a"/>
+    <use href="#small" xlink:href="#small" transform="translate(400,152) scale(0.0667)" color="#3fa9ff"/>
+    <rect x="430" y="144" width="24" height="24" rx="3.4" fill="#050b1a"/>
+    <use href="#small" xlink:href="#small" transform="translate(430,144) scale(0.1000)" color="#3fa9ff"/>
+    <rect x="468" y="136" width="32" height="32" rx="4.5" fill="#050b1a"/>
+    <use href="#small" xlink:href="#small" transform="translate(468,136) scale(0.1333)" color="#3fa9ff"/>
+    <rect x="514" y="120" width="48" height="48" rx="6.7" fill="#050b1a"/>
+    <use href="#small" xlink:href="#small" transform="translate(514,120) scale(0.2000)" color="#3fa9ff"/>
+    <text x="16" y="230">6 Warm amber</text>
+    <rect x="150" y="232" width="16" height="16" rx="2.2" fill="#1a0f05"/>
+    <use href="#full" xlink:href="#full" transform="translate(150,232) scale(0.0667)" color="#ff9a3c"/>
+    <rect x="180" y="224" width="24" height="24" rx="3.4" fill="#1a0f05"/>
+    <use href="#full" xlink:href="#full" transform="translate(180,224) scale(0.1000)" color="#ff9a3c"/>
+    <rect x="218" y="216" width="32" height="32" rx="4.5" fill="#1a0f05"/>
+    <use href="#full" xlink:href="#full" transform="translate(218,216) scale(0.1333)" color="#ff9a3c"/>
+    <rect x="264" y="200" width="48" height="48" rx="6.7" fill="#1a0f05"/>
+    <use href="#full" xlink:href="#full" transform="translate(264,200) scale(0.2000)" color="#ff9a3c"/>
+    <rect x="400" y="232" width="16" height="16" rx="2.2" fill="#1a0f05"/>
+    <use href="#small" xlink:href="#small" transform="translate(400,232) scale(0.0667)" color="#ff9a3c"/>
+    <rect x="430" y="224" width="24" height="24" rx="3.4" fill="#1a0f05"/>
+    <use href="#small" xlink:href="#small" transform="translate(430,224) scale(0.1000)" color="#ff9a3c"/>
+    <rect x="468" y="216" width="32" height="32" rx="4.5" fill="#1a0f05"/>
+    <use href="#small" xlink:href="#small" transform="translate(468,216) scale(0.1333)" color="#ff9a3c"/>
+    <rect x="514" y="200" width="48" height="48" rx="6.7" fill="#1a0f05"/>
+    <use href="#small" xlink:href="#small" transform="translate(514,200) scale(0.2000)" color="#ff9a3c"/>
+    <text x="16" y="310">7 White on black</text>
+    <rect x="150" y="312" width="16" height="16" rx="2.2" fill="#0d0d0d"/>
+    <use href="#full" xlink:href="#full" transform="translate(150,312) scale(0.0667)" color="#f2f2f2"/>
+    <rect x="180" y="304" width="24" height="24" rx="3.4" fill="#0d0d0d"/>
+    <use href="#full" xlink:href="#full" transform="translate(180,304) scale(0.1000)" color="#f2f2f2"/>
+    <rect x="218" y="296" width="32" height="32" rx="4.5" fill="#0d0d0d"/>
+    <use href="#full" xlink:href="#full" transform="translate(218,296) scale(0.1333)" color="#f2f2f2"/>
+    <rect x="264" y="280" width="48" height="48" rx="6.7" fill="#0d0d0d"/>
+    <use href="#full" xlink:href="#full" transform="translate(264,280) scale(0.2000)" color="#f2f2f2"/>
+    <rect x="400" y="312" width="16" height="16" rx="2.2" fill="#0d0d0d"/>
+    <use href="#small" xlink:href="#small" transform="translate(400,312) scale(0.0667)" color="#f2f2f2"/>
+    <rect x="430" y="304" width="24" height="24" rx="3.4" fill="#0d0d0d"/>
+    <use href="#small" xlink:href="#small" transform="translate(430,304) scale(0.1000)" color="#f2f2f2"/>
+    <rect x="468" y="296" width="32" height="32" rx="4.5" fill="#0d0d0d"/>
+    <use href="#small" xlink:href="#small" transform="translate(468,296) scale(0.1333)" color="#f2f2f2"/>
+    <rect x="514" y="280" width="48" height="48" rx="6.7" fill="#0d0d0d"/>
+    <use href="#small" xlink:href="#small" transform="translate(514,280) scale(0.2000)" color="#f2f2f2"/>
+    <text x="16" y="390">8 Black on white</text>
+    <rect x="150" y="392" width="16" height="16" rx="2.2" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#full" xlink:href="#full" transform="translate(150,392) scale(0.0667)" color="#111111"/>
+    <text x="158.0" y="424" text-anchor="middle">16</text>
+    <rect x="180" y="384" width="24" height="24" rx="3.4" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#full" xlink:href="#full" transform="translate(180,384) scale(0.1000)" color="#111111"/>
+    <text x="192.0" y="424" text-anchor="middle">24</text>
+    <rect x="218" y="376" width="32" height="32" rx="4.5" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#full" xlink:href="#full" transform="translate(218,376) scale(0.1333)" color="#111111"/>
+    <text x="234.0" y="424" text-anchor="middle">32</text>
+    <rect x="264" y="360" width="48" height="48" rx="6.7" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#full" xlink:href="#full" transform="translate(264,360) scale(0.2000)" color="#111111"/>
+    <text x="288.0" y="424" text-anchor="middle">48</text>
+    <rect x="400" y="392" width="16" height="16" rx="2.2" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#small" xlink:href="#small" transform="translate(400,392) scale(0.0667)" color="#111111"/>
+    <text x="408.0" y="424" text-anchor="middle">16</text>
+    <rect x="430" y="384" width="24" height="24" rx="3.4" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#small" xlink:href="#small" transform="translate(430,384) scale(0.1000)" color="#111111"/>
+    <text x="442.0" y="424" text-anchor="middle">24</text>
+    <rect x="468" y="376" width="32" height="32" rx="4.5" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#small" xlink:href="#small" transform="translate(468,376) scale(0.1333)" color="#111111"/>
+    <text x="484.0" y="424" text-anchor="middle">32</text>
+    <rect x="514" y="360" width="48" height="48" rx="6.7" fill="#ffffff" stroke="#c9cec9"/>
+    <use href="#small" xlink:href="#small" transform="translate(514,360) scale(0.2000)" color="#111111"/>
+    <text x="538.0" y="424" text-anchor="middle">48</text>
+  </g>
+</svg>

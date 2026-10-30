@@ -52,7 +52,11 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | map | `std::map.sorted` / `.inserted` / `.unordered` | Key–value lookup in `std`; the kind names its order | D66, D70 | dict, hash map |
 | position | `pos:` | An index counting from 1: `pos: 1` is the first item | D64 | index |
 | offset | `offset:` | An index counting from 0: `offset: 0` is the start | D64 | index |
-| range | `Range` | The `min`/`max` refinement on a fixed-width integer | D14 | |
+| break | `break` | Stops the loop it is in | D77 | `stop`, `exit`, `leave`, `last` |
+| — | — | (No skip-this-trip statement: write the condition around the work) | D77 | `continue`, `skip`, `next` (as a statement) |
+| range | `range[from:, to:, before:, step_by:]` | A sequence of numbers a loop goes through (`for $i in range[…]`): `to:` includes the end, `before:` stops before it, `step_by:` is the step (default 1, negative counts down) | D73, D74 | `until:`, `by:`, `step:`, `steps:`, `every:`; "loop bounds" |
+| bounds | `min:`, `max:` | A type's lower and upper limits (`int[min: 0, max: 100]`) | D14, D74 | range (for limits) |
+| requirement | — | What a generic placeholder needs (`[?T: ordered]`: `?T` requires `ordered`) | D69, D74 | bound, trait bound |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
 | own-name mark | — | `my.`, needed only when the writer's function or type name clashes with a built-in (`my.reading`) | D43 | own-function mark |
 | section marker | — | `// section a.b:` … `// end section a.b` | D18 | |
