@@ -6,6 +6,7 @@ From D28, D31, D43 and D32. A mark says where a name comes from.
 |---|---|---|
 | `$` | a value the writer named: a variable, constant or parameter (declared and used) | `$count` |
 | `@` | where an isotope (a trusted compiler extension) enters a name; each `@` is one isotope | `@float.@deci.32_bit` |
+| `?` | a generic placeholder type, at its declaration and every use | `?T` |
 | `std::` | the standard compound | `std::print` |
 | `my.` | the writer's own function or type, **only when its name clashes with a built-in** | `my.reading` |
 | none | built into the language, or the writer's own name with no clash | `int`, `div`, `reading` |

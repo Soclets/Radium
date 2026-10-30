@@ -7,6 +7,8 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 
 | Term | In code | Meaning | Decision | Not used |
 |---|---|---|---|---|
+| Geiger | `geiger` | Radium's prover | D67 | Precog (CyborgPL's), Radinum |
+| Curie | `curie` | Radium's compiler, and its command | D68 | `radium` (as a command), KAYO (CyborgPL's) |
 | check site | `CheckSite` | A place that could go wrong: overflow, out-of-range, bounds, division by zero, narrowing | D2 | |
 | proven | `Proven` | A check site the prover has shown can never fail | D2, D12 | |
 | unproven | `Unproven` | A check site the prover could not prove either way | D2 | |
@@ -41,6 +43,13 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | struct | `Struct` | Named fields stored together as one value | D58 | record |
 | tagged union | `TaggedUnion` | `union.tagged`: a value that is one of several named cases, which may carry data | D59 | enum, sum type, variant |
 | union | `RawUnion` | Bare `union`: C's untagged union, allowed only inside shields | D59 | |
+| interface | `interface` | A list of operations a type must have; no code; used in generic bounds | D69 | sig, signature, trait, protocol, concept, typeclass |
+| law | `law` | A rule an interface's operations must obey, proven by Geiger at each `satisfies` | D69 | |
+| type slot | — | A type an interface leaves for each joining type to fill in (`type item;`) | D69 | associated type |
+| type set | `type_set` | A closed list of types; used in generic bounds | D69 | set (CyborgPL's), union type |
+| array | `array` | Built-in fixed-length sequence, stored inside its holder, no heap | D70 | |
+| list | `std::list` | Growable sequence in `std`, on the heap, within a length range | D64, D70 | vector, `Vec` |
+| map | `std::map.sorted` / `.inserted` / `.unordered` | Key–value lookup in `std`; the kind names its order | D66, D70 | dict, hash map |
 | position | `pos:` | An index counting from 1: `pos: 1` is the first item | D64 | index |
 | offset | `offset:` | An index counting from 0: `offset: 0` is the start | D64 | index |
 | range | `Range` | The `min`/`max` refinement on a fixed-width integer | D14 | |

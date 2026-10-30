@@ -110,7 +110,7 @@ Owner: "runtime perf doesn't matter much if it's not final product." Shield exit
 ## D10 — Marking non-final binaries (2026-10-29)
 
 Owner chose option 3 of four. Mode 1 and mode 2 binaries carry a metadata stamp of their mode (readable by a tool such
-as `radium inspect`) and print one warning line to stderr every time they start, e.g.
+as `curie inspect`, D68) and print one warning line to stderr every time they start, e.g.
 `⚠ Radium mode 1 build — unproven, not a final product`. Only a final binary starts silently.
 
 ## D11 — Run-time failures (2026-10-29)
@@ -910,6 +910,123 @@ the plain Apache 2.0 of the first commit.
   Radium owe nothing**. (The LLVM project's own licence.)
 - **`LICENSE-CC-BY-4.0`: CC BY 4.0**, for the repo's writing — every Markdown file. Credit line:
   `Radium GitHub repo text: https://github.com/Soclets/Radium`. Code and code comments stay under `LICENSE`.
+
+## D66 — Maps (2026-10-30)
+
+Owner asked whether both kinds of map should exist; design claude proposed, owner: "yes". A classic hash map, whose
+iteration order is unspecified, can't exist as-is (D55). The kinds differ by **the order you get going through
+them**: **`map.sorted`** (key order) and **`map.inserted`** (insertion order). **No bare `map`**: the order is a
+visible choice, so there is no default to hide it (D42). The data structure underneath is the compiler's business.
+
+Owner asked where the fastest map would be; design claude proposed, owner: "yes": a third kind, **`map.unordered`** —
+the fastest (a plain hash map), with lookup, adding and removing, but **no way to go through its entries**. With no
+order to observe, nothing is unspecified (D55). To go through the entries, convert it to `map.sorted` or
+`map.inserted`, which is where the order gets defined. Its hash function is fixed, the same on every run and machine
+(keys crafted to collide can slow it, never change its results).
+
+Proposed by design claude, owner: "yes": **key and value are both labelled** —
+`map.sorted[key: str.utf8, value: int[min: 0, max: 999_999_999], max: 500]` — since neither is the main thing.
+`min:`/`max:` give the number of entries, required at the edges like a list's length (D64).
+
+## D67 — The prover is Geiger (2026-10-30)
+
+Owner chose **Geiger** over Radinum (design claude's recommendation: Radinum reads as a misspelling of Radium and is
+easily confused with it). A Geiger counter reveals danger that is already there, as the prover reveals bugs; the name
+is distinct from the language while belonging to the radium world. Messages read
+`Geiger: line 12, overflow possible when $count = 255`. Other candidates: Curie, Assay, Dosimeter, Cherenkov,
+Becquerel.
+
+## D68 — The compiler is Curie; files end in `.ra` (2026-10-30)
+
+Owner asked for another name than plain `radium`, and for the file extension; design claude proposed both, owner:
+"yes to both".
+
+- **The compiler is Curie** — Marie Curie refined radium out of pitchblende ore, as the compiler refines source into
+  a program. *Curie builds it, Geiger (D67) checks it.* The command is `curie` (`curie build`, `curie final`,
+  `curie inspect`); where earlier decisions wrote `radium build` / `radium inspect`, read `curie`.
+- **Source files end in `.ra`** — radium's chemical symbol. (The old RealAudio format also used `.ra`; it is long
+  obsolete.) To check before the first code lands: conflicts in GitHub's language detection.
+
+## D69 — Writers' own generics (2026-10-30)
+
+Proposed by design claude, owner: "yes". Writers can make their own generic functions and types (one `largest`
+for lists of any element type), as `std` needs to be written in Radium (D23).
+
+Proposed by design claude, owner: "yes": **a placeholder type is marked `?` everywhere it appears**, and declared in
+**its own `[ ]` before the parameters** (one kind per bracket, a CyborgPL lesson):
+
+```
+fn largest [?T] [$items: std::list[?T, min: 1, max: 100]] -> ?T:
+```
+
+`?` reads as "a type left open"; `<T>` is unavailable since `<` and `>` are comparisons (D34). Placed in the bracket
+rule (D50): placeholders describe, so `[ ]`.
+
+**What a placeholder needs** (2026-10-30; owner pointed to CyborgPL's design, its design session briefed it; owner:
+"yes, but we have to look at the names first"). Radium starts from CyborgPL's shape:
+
+- a group listing **operations** a type must have (CyborgPL's `sig`) — signatures only, no code;
+- a group listing **types**, closed (CyborgPL's `set`);
+- the two never mix in one block;
+- a bound is written once, in the placeholder's `[ ]`, joined with `and`: `[?T: … and …]`;
+- a generic body may use on a `?T` value only what its bound lists.
+
+Owner asked "is `interface` accurate?"; design claude checked it three ways, owner: "yes". **The operations group is
+an `interface`** — the settled programming word (D58) for "a set of operations a type promises to have", and in
+English the boundary through which generic code touches a `?T`. (CyborgPL dropped `interface` for `sig` because its
+version could list types; Radium's can't. Unlike Java/C#, a Radium interface holds no code.) The stricter maths
+meaning, a signature with laws, could come in by narrowing (e.g. `interface.lawful`, placeholder).
+
+Proposed by design claude, owner: "yes": **the types group is a `type_set`** — Go's term, exact in maths ("a set
+whose members are types"), joined with `_` (D35). Plain `set` was avoided: it is a common data structure (`std`
+will likely want one) and a verb, which would give it two meanings (D33).
+
+```
+type_set whole:
+    int.signed.32_bit;
+    int.signed.64_bit;
+end type_set whole
+
+fn smaller [?T: whole and ordered] [$a: ?T, $b: ?T] -> ?T:
+```
+
+Proposed by design claude, owner: "yes": **a type joins an interface only when declared**, with one line —
+`reading satisfies ordered;` — which the compiler checks there. Having the right operations by accident doesn't
+count: a `<` meaning "older than" must not silently make a type `ordered` (a D33 trap; CyborgPL joins automatically).
+The `satisfies` line is where laws would be proven if interfaces later carry them.
+
+Proposed by design claude (option 1), owner: "yes": **an interface may contain laws** — rules its operations must
+obey, proven by Geiger (D67) for each type at its `satisfies` line. Optional; an interface without laws works as
+before. Generic code may rely on them (`largest` can trust `<` is a real ordering).
+
+```
+interface ordered [?T]:
+    op < [$a: ?T, $b: ?T] -> bool;
+    law if $a < $b and $b < $c then $a < $c;
+end interface ordered
+```
+
+This replaces the earlier idea of a narrowed `interface.lawful`: the `law` lines are visible inside the interface. The
+spelling of `law` and of operator signatures (`op`) is provisional.
+
+Proposed by design claude, owner: "yes": **an interface can include another** — `includes equatable;` inside
+`ordered` — and gets its operations and laws. A type satisfying `ordered` must satisfy `equatable` too. (`includes`
+is provisional.)
+
+Proposed by design claude, owner: "yes": **an interface can declare a type slot** that each joining type fills in
+(Rust's associated types): `type item;` in the interface, `std::list[?E] satisfies walkable [item = ?E];` at the
+join. The item type is a fact about the type, not a choice the user makes. Spellings provisional.
+
+## D70 — `array` is built in; `list` and the maps live in `std` (2026-10-30)
+
+Owner asked "where's `array`, and who owns `list`?"; design claude proposed, owner: "yes". **Amends D64 and D66.**
+
+- **`array`** — built into the language: a fixed number of values in a row, its length part of its type, stored
+  right inside its holder, **no heap**: `array[int[min: 0, max: 255], length: 16]`. What small boards use.
+- **`std::list[…]`** and **`std::map.sorted` / `.inserted` / `.unordered`** — in `std`, written in Radium (D23), so
+  proven. Growing needs raw memory, which sits in a small shield (D6) inside `std`; they use the heap and count
+  against the heap budget (D8). D64's and D66's spellings gain the `std::` prefix.
+- A list owns its items (D5); they are dropped with it.
 
 ---
 
