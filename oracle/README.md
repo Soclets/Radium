@@ -75,8 +75,7 @@ The oracle had to read these one way to run at all. None is a decision; each wai
    being refused.
 3. **Arithmetic is exact until a value is stored.** `$a + $b` is computed exactly, and checked when it lands in a
    bounded value or parameter.
-4. **Operator strength:** `x`, `div`, `mod` bind tighter than `+`, `-` (school maths, D34); comparisons come next;
-   then `not`, then `and`, then `or`. Mixing `and` and `or` without brackets is allowed.
+4. ~~Operator strength~~: decided, D111.
 5. **`std::print`:** prints its items one after another with nothing between, adds no line break of its own (`newline`
    does), and is the only place text may appear while text types are open.
 6. **Range labels keep their declared order** (`from:`, then `to:` or `before:`, then `step_by:`), as D54 says for

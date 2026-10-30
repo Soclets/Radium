@@ -1039,35 +1039,49 @@ impl Parser {
     }
 }
 
-// Operator strength is a provisional reading (oracle/README.md): `x`, `div`, `mod` over `+`, `-`; then comparisons;
-// then `not`, `and`, `or`.
+// Operator strength (D111): `-` before a value; `x`, `div`, `mod`; `+`, `-`; comparisons; `not`; then `and`/`or`,
+// which don't mix without brackets.
 impl Parser {
     fn expression(&mut self) -> Result<Expression, Problem> {
         self.or_expression()
     }
 
     fn or_expression(&mut self) -> Result<Expression, Problem> {
-        let mut left = self.and_expression()?;
+        let start = self.line();
+        let (mut left, mut has_and) = self.and_chain()?;
+        let mut has_or = false;
         while self.at_word("or") {
             let line = self.line();
             self.advance();
             self.refuse_logic_narrowing()?;
-            let right = self.and_expression()?;
+            let (right, right_has_and) = self.and_chain()?;
+            has_and |= right_has_and;
+            has_or = true;
             left = binary(line, Operator::Or, left, right);
+        }
+        // trace D111: `and` and `or` don't mix without brackets.
+        if has_and && has_or {
+            return Err(Problem::refused(
+                start,
+                "`and` and `or` don't mix without brackets: write `$a or ($b and $c)` (D111)",
+            ));
         }
         Ok(left)
     }
 
-    fn and_expression(&mut self) -> Result<Expression, Problem> {
+    /// Reads `a and b and …`, saying whether it held any `and` outside brackets.
+    fn and_chain(&mut self) -> Result<(Expression, bool), Problem> {
         let mut left = self.not_expression()?;
+        let mut has_and = false;
         while self.at_word("and") {
             let line = self.line();
             self.advance();
             self.refuse_logic_narrowing()?;
             let right = self.not_expression()?;
+            has_and = true;
             left = binary(line, Operator::And, left, right);
         }
-        Ok(left)
+        Ok((left, has_and))
     }
 
     fn refuse_logic_narrowing(&self) -> Result<(), Problem> {

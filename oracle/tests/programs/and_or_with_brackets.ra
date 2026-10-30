@@ -1,0 +1,16 @@
+// trace D111
+// expect: runs
+// output: yes
+// output: no
+fn.main [] -> void:
+    var $a: bool = true;
+    if $a or (false and false):
+        std::print("yes", newline);
+    end if
+    if ($a or false) and false:
+        std::print("yes", newline);
+    else:
+        std::print("no", newline);
+    end if
+    return void;
+end fn.main
