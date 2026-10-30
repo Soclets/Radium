@@ -30,14 +30,17 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | failure | `Failure` | A declared, handled way a function can end early | D11 | exception, panic |
 | failure set | `FailureSet` | The exact failures a signature lists | D11 | |
 | failure contract | `FailureContract` | When a failure happens (`fails x exactly when …`) | D11 | |
-| handler collection | `HandlerCollection` | A named, reusable group of handler arms | D11 | |
+| handler narrowings | `HandlerNarrowings` | A named, reusable group of handler arms (`narrowings.handler`) | D11, D57 | handler collection |
+| preset | `Preset` | A narrowing that only fixes some arguments, one line ending in `;` (`heat.popcorn [$power = 800];`) | D57 | |
+| fixed defaults | `FixedDefaults` | `defaults.fixed`: defaults promised never to change; spelling them out is refused | D57 | |
+| function narrowings | `FunctionNarrowings` | A name and its narrowed functions (`narrowings.fn`) | D57 | function collection, `collection.fn`, `coll.fn`, member |
 | proof certificate | `ProofCertificate` | A solver's step-by-step proof, re-checked by the proof checker | D12 | |
 | proof checker | `ProofChecker` | The small, Verus-verified program that re-checks proof certificates | D12, D16 | |
 | isotope | `Isotope` | A compiler extension: trusted, not proven | D23 | plugin, limb |
 | compound | `Compound` | A library written in Radium: proven like any other code | D23 | kit, package |
 | range | `Range` | The `min`/`max` refinement on a fixed-width integer | D14 | |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
-| own-function mark | — | The mark on every use of the writer's own function (`my.x`) | D43 | |
+| own-name mark | — | `my.`, needed only when the writer's function or type name clashes with a built-in (`my.reading`) | D43 | own-function mark |
 | section marker | — | `// section a.b:` … `// end section a.b` | D18 | |
 | trace tag | — | `// trace D<n>` | D18 | |
 

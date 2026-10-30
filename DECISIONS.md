@@ -147,7 +147,7 @@ Owner's own design.
   settled it as lowercase `main`.)
 - The compiler checks that every `end` matches its opener exactly.
 
-Contracts sit between the signature and the `:` (provisional).
+Contracts are the first lines of the body (D53).
 
 ## D14 — Integers (2026-10-29; width amended by D27)
 
@@ -305,7 +305,12 @@ is 0 or more, signed when `min` is negative — then the smallest width that hol
 unsigned; `int[min: -1, max: 255]` → 16 bits signed). Mixing signed and unsigned is safe because the prover checks
 every value against its range; nothing converts silently.
 
-## D28 — `%` marks what an isotope provides (2026-10-29)
+## D28 — `@` marks what an isotope provides (2026-10-29; `%` changed to `@` on 2026-10-30)
+
+**Changed 2026-10-30** (owner proposed, "yes"): the mark is **`@`**, not `%`: `@float.bin.32_bit`,
+`@float.@deci.32_bit`. `%` reads as remainder or a format placeholder in other languages; `@` already means "handled
+specially by the compiler" in several (annotations, decorators, attributes). The rules below are unchanged, with `@` in
+place of `%`.
 
 Owner's sketch:
 
@@ -417,7 +422,8 @@ Owner asked whether narrowings that are the same should be refused; design claud
 - **Spelling out a default the language fixes is refused** — `div.exact` is an error saying "write `div`", since that
   default can never change.
 - **A function collection's default may be spelled out** (`std::print.shortest.stdout`), since its writer may change
-  the default later.
+  the default later. *Refined by D57:* not when the writer declares `defaults.fixed`, which `std` does — so
+  `std::print.shortest.stdout` is refused.
 - Narrowings that happen to agree in one place (`div.floor` and `div.trunc` on proven non-negatives) are not refused:
   they differ in general and say which rule is meant.
 
@@ -439,7 +445,7 @@ the word `equal` (D34). (`change … to …` was considered and dropped.)
 Design claude's summary of D25, D27, D31 and D37–D40, shown with D40 (owner said "yes" to D40): a bare form's default **never hides a choice**, and is **what
 almost every use wants and expects**.
 
-## D43 — Your own functions are marked where used (2026-10-30)
+## D43 — Your own functions are marked where used (2026-10-30; mark only on clashes, amended the same day)
 
 Owner: "you can name your fn shit anything, it just needs a mark like `my.x` or something to use." **Replaces D32's
 reserved list for function names.** A function may have any name, `x` or `if` included; every use of the writer's own
@@ -457,9 +463,15 @@ end main
 ```
 
 A built-in word and a writer's name can never clash, so new keywords never break old code, and every call shows where
-it comes from (`my.` own, `std::` the standard compound, `%` an isotope). Quoted names (D32) remain for odd
+it comes from (`my.` own, `std::` the standard compound, `%` an isotope; now `@`, D28). Quoted names (D32) remain for odd
 characters and C names. Owner: if `my.` gets too heavy, it could become one symbol, or be needed only for names that
-clash; open. Whether types follow the same rule is open.
+clash.
+
+**Amended 2026-10-30** (owner, on marking types too: "That's a bit too heavy"; then "opt 2" after seeing a
+one-symbol `@` mark): **the mark is needed only when a name clashes.** The writer's own functions and types are bare
+(`var $r: reading = read_sensor();`). When a name is the same as a built-in one, `my.` resolves it (`my.reading`). If
+a later Radium adds a built-in with the same name as the writer's, old code gets a compile error saying to write
+`my.…`, never a silent change of meaning; a tool can make that fix. Functions and types follow the same rule.
 
 ## D44 — C++ rules (2026-10-30)
 
@@ -532,11 +544,222 @@ Anything else (Python, shell, Go, …) needs the owner's explicit OK as an excep
 CMake builds the C++ into a library; `cargo build` builds the Rust and links to it where CMake left it. Neither drives
 the other. The order (CMake first, then Cargo) is written in the README and run by the merge bot (D45).
 
+## D47 — When `std` is built (2026-10-30)
+
+Proposed by design claude, owner: "opt 3". `std`'s shape is **sketched on paper during the design phase**: its
+function collections, defaults, contracts and failure sets. That tests the language's rules on a real library before
+anything is built. Once the compiler exists, a dedicated `std` session writes it alongside the compiler, piece by
+piece as each part of the language works.
+
+## D48 — The oracle (2026-10-30)
+
+Owner: the oracle is "for getting the design to be enforced by something that can't be 'wrong'", before memory (the
+owner's and the session's) drifts. So it is **written by the design session**, as a runnable form of these
+decisions, growing as decisions are made; each one gets tests tagged `trace D<n>` (D18), written as small Radium
+programs the owner can read. Rust (D46), in `oracle/`. The compiler session never reads the oracle's source, only its
+tests, so the two stay independent implementations. **Not started until the syntax phase is done** (owner: "don't
+build it now. We haven't done syntax yet").
+
+Revised the same day, owner: "yes". **The oracle has its own `std`, written in Rust**, built before Radium's real
+`std` exists (owner: CyborgPL "didn't get `std` written in itself for dozens of days"). It is D47's sketch made
+runnable: `std`'s collections, defaults, contracts and failure sets pinned down as behaviour. It is **kept after the
+real `std` exists**, as a second independent implementation, so a disagreement catches a bug in either; the cost is
+keeping the two in step. Isotopes and the bridge to the operating system likewise get their own oracle versions. In
+the syntax phase, function collections move up beside declarations, since the oracle's `std` needs them early.
+
+## D49 — Lifetimes name their source (2026-10-30)
+
+Owner proposed `` `a` `` for lifetime names; design claude raised that backticks fight Markdown (all docs) and some
+keyboards, and proposed naming the source instead; owner: "yes". A borrow that comes from a parameter **names that
+parameter**: `-> lend from $text str.utf8` (placeholder words). No abstract lifetime labels to match up. A **named
+lifetime** is used only where there is no parameter to point at, mainly a struct holding a borrow; its spelling is
+open but is not a backtick. Close to Swift's lifetime dependencies. The ownership words themselves are syntax step 5.
+
+## D50 — `( )` runs, `[ ]` describes or holds (2026-10-30)
+
+Owner pointed to CyborgPL's rule (its design session briefed the details); design claude proposed adopting it with
+grouping declared up front; owner: "yes".
+
+- **`( )` runs something: a call.** `first_word("hello there", 20)`, `std::print("hi", newline)`.
+- **`[ ]` describes or holds everything else:** a definition's parameters (`fn first_word [$text: str.utf8, $limit:
+  int[min: 1, max: 80]] -> str.utf8:`), types and a function's type, ranges (`int[min: 1, max: 99]`), indexes,
+  building a struct or a failure, a loop's range.
+- **Both:** a conversion describes its target and passes its input: `to.…[min: 1, max: 99]($text)` (placeholder name).
+- **Inside `[ ]`:** `:` labels an argument or bound (`min: 1`); `=` sets a field.
+- **The one exception, declared from the start: grouping in maths**, `$x - ($a + $b)`, where `( )` runs nothing.
+- Lessons carried from CyborgPL: place generics in this rule when they are designed (CyborgPL's `< >` was missed);
+  something that acts at build time (e.g. reading a file into the program) runs something, so `( )`.
+
+## D51 — `fn` and `fn.pure` (2026-10-30)
+
+Owner: "Programming-wise, it's accurate. Maths-wise, it's not. Guess who knows Ownership. So, maybe `fn` and
+`fn.pure`?" A function starts with **`fn`** (its readers are programmers, who know "function" loosely); **`fn.pure`**
+narrows it (D26) to a function in the maths sense: no side effects, the same result for the same arguments. The
+compiler checks the promise, as with `var.immut` (D30); bare `fn` promises nothing either way.
+
+Proposed by design claude, owner: "yes": **contracts may call only `fn.pure` functions** — `requires`, `ensures`, loop
+invariants, failure conditions, termination measures. A contract must never do anything, or a program would behave
+differently in mode 2 (contracts checked at run time) and the final build (proven away). As in Dafny and SPARK.
+
+## D52 — The result type: `->` (2026-10-30)
+
+Proposed by design claude, owner: "yes". A function's result type follows `->` after the parameters:
+`fn first_word [$text: str.utf8, …] -> str.utf8:`. A function with no result leaves it out:
+`fn log [$msg: str.utf8]:`. (`: type` was rejected: `:` already gives a name its type and opens a block. `returns`
+was rejected as long.)
+
+## D53 — Contracts are the first lines of the body (2026-10-30)
+
+Proposed by design claude (option 3), owner: "yes". Replaces D13's provisional placement. The header is one line
+ending in `:`; contracts are ordinary statements ending in `;`, and **must come first**, before any other statement
+(only a `labels` line, D54, may come before them):
+
+```
+fn first_word [$text: str.utf8, $limit: int[min: 1, max: 80]] -> str.utf8:
+    requires length($text) > 0;
+    ensures length(result) at_most $limit;
+    fails too_long exactly when length($text) > $limit;
+    …
+end fn first_word
+```
+
+A contract placed after another statement is refused. Tools and docs show contracts as part of the function's
+interface.
+
+Owner, "yes" (same day): the words are **`requires`** (what callers must guarantee) and **`ensures`** (what the
+function promises back). Owner: in an `ensures`, the value the function gives back is **`result`**, bare — it comes
+from the language, not the writer, so it carries no `$` (D31) and never clashes with a writer's `$result`.
+`fails … exactly when` is still a placeholder.
+
+Proposed by design claude, owner: "Yes". A contract refers to a value **as it was when the function started** with
+**`old[…]`** (`[ ]` describes, D50): `ensures length($list) equal length(old[$list]) + 1;`.
+
+## D54 — Labels (2026-10-30)
+
+Owner: "the things that need clarification will have labels (writers could also be able to make their own labels).
+Like `min:, max:`". A value whose meaning wouldn't be clear from its position gets a label, written `name:` before it
+(`int[min: 1, max: 99]`). Built-in things use labels where they need clarifying, and writers can give their own
+functions labels too. Owner first said writer-made labels are only available in function collections (as in
+CyborgPL). After CyborgPL's design session pointed out the asymmetry this causes (the language's own functions all
+have labels, so writers must build a whole collection to label one argument), owner: **"any `fn`"** — any function
+may declare labels. Collections keep members, presets and versions.
+
+Proposed by design claude (option 1), owner: "yes": **a `labels` line at the top of the body**, before the contracts
+(D53), the same line in a plain `fn` and in a collection. The caller's word may differ from the writer's `$name`:
+
+```
+fn first_word [$text: str.utf8, $limit: int[min: 1, max: 80]] -> str.utf8:
+    labels [$limit as limit];
+    requires length($text) > 0;
+    …
+end fn first_word
+
+first_word("hello there", limit: 20)
+```
+
+The top of the body is where "how to call me" lives: labels, then contracts.
+
+Proposed by design claude (option 3), owner: "yes": **bare `labels` keeps the declared order**; **`labels.any_order`**
+lets callers write labelled arguments in any order (e.g. `box(height: 4, width: 10)`). `labels.in_order` is refused
+as a spelled-out language default (D39).
+
+Proposed by design claude (option 3), owner: "yes": **any `fn` may declare defaults, only for labelled parameters**,
+on a `defaults` line after `labels`: `defaults [$limit = 40];` → `first_word("hello there")` gives `limit` 40.
+Defaults are the only optional arguments. Top-of-body order: `labels`, `defaults`, then contracts.
+
+Proposed by design claude (CyborgPL's rule), owner: "yes": **Radium's own functions leave the first argument — the
+thing worked on — bare, and label every other argument with its role**: `list.append($readings, value: 42)`,
+`str.replace($name, from: "a", to: "b")`. Exception: lists where every item has the same role, like `print`'s pieces.
+This binds Radium's own functions (`std`, built-ins); writers label theirs as they like.
+
+From CyborgPL, for reference: a label is the caller's word, the `$param` stays the writer's name (`labels [$text as
+value]`); labels are required once declared; the language's own functions leave the first argument (the thing worked
+on) bare and label every other argument's role (`list.append($xs, value: 2)`), except lists where every item has the
+same role.
+
+## D55 — A standard and documented behaviour (2026-10-30)
+
+Owner: "we would also have documented behaviour and a standard", then "Not just for `fn`, bro. The entire lang …
+How ISO says C stuff." Radium will have a **written standard for the entire language**, in the manner of the ISO C
+standard: the documented behaviour of every construct, not only of functions. It sits alongside DECISIONS.md (why)
+and the oracle (D48, what runs).
+
+Proposed by design claude, owner: "yes". Of ISO C's four kinds of behaviour, Radium's standard has only two:
+
+1. **Defined** — every construct has exactly one specified behaviour.
+2. **Target-defined** (in place of implementation-defined) — only what the declared target describes may vary
+   (stack size, heap budget D8, pointer size D14), written in the target's description, never chosen silently by the
+   compiler.
+
+There is **no unspecified behaviour** (evaluation order is fixed; e.g. arguments left to right, `and`/`or` per D40)
+and **no undefined behaviour** (anything that could go wrong is a check site the prover must rule out, D2). The one
+place outside this is **inside a shield** (D6): the standard specifies the walls; the inside is the shield writer's
+responsibility. The standard's form and when it is written are open.
+
+## D56 — Failures are written as `fails` lines in the body (2026-10-30)
+
+Proposed by design claude, owner: "yes". A function's failure set (D11) is its `fails` lines, among the contracts at
+the top of the body (D53); each names one failure and says when it happens. Failures are not repeated in the header.
+Docs and the standard (D55) show them as a list.
+
+Proposed by design claude, owner: "yes". Two forms:
+
+- **`fails X exactly when C;`** — a failure decided by the arguments. The promise goes both ways: when `C` holds the
+  function always fails with `X`, and when it doesn't, it never does. A caller who has proven `C` false needn't
+  handle `X` (D11). (Plain `when` was avoided: in English it reads one-way, a D33 trap.) `C` may call only `fn.pure`
+  functions (D51).
+- **`fails X;`** — a failure caused from outside (a missing file, a network error), which no condition on the
+  arguments can express. Callers must always handle it.
+
+## D57 — `narrowings`: function and handler collections (2026-10-30)
+
+Owner proposed **`narrowings`** as the keyword (a collection is the set of narrowings of one name, D26), then chose
+to narrow it by kind "so we could remove the `fn` spam": **`narrowings.fn`** and **`narrowings.handler`** (D11's
+handler collections). Since the outer line states the kind, the blocks inside don't repeat it — a D13 exception, like
+`main`:
+
+```
+narrowings.fn print:
+    print [$items: …]:                 // the name itself (the collection's own function)
+        …
+    end print
+    print.stdout [$items: …]:          // a narrowing of it
+        …
+    end print.stdout
+end narrowings.fn print
+```
+
+Replaces CyborgPL's `collection.fn` / `coll.fn`.
+
+Proposed by design claude (option 3), owner: "yes": **pure members.** Inside `narrowings.fn`, a member is a plain `fn`
+by default. A pure one writes **`fn.pure`** in front (`fn.pure area.square [ … ] -> …:` … `end fn.pure
+area.square`). When every member is pure, the collection says so once: **`narrowings.fn.pure area:`**.
+Proposed by design claude, owner: "yes": **presets** — a narrowing that only fills in some of the name's arguments,
+with no code of its own, written as one line ending in `;`: `heat.popcorn [$power = 800, $minutes = 3];`,
+`heat.defrost [$power = 200];`. A preset takes the arguments it leaves open, in order: `heat.defrost(10)` is
+`heat(200, 10)`. A collection's narrowings exist only if its writer defines them.
+
+Owner asked "Presets or narrowings?"; design claude proposed (option 2), owner: "yes". **Everything inside
+`narrowings.fn` is a narrowing.** One with its own code is simply a narrowing (a block ending in `:`); one that only
+fixes arguments is called a **preset** (one line ending in `;`) — the word the standard and error messages use. The
+word "member" (CyborgPL's) is not used.
+
+Proposed by design claude, owner: "yes": **presets stack.** Each `.` applies one more preset, so a writer defines each
+choice once and combines them: `print.full [$format = full];`, `print.stderr [$target = stderr];` →
+`std::print.full.stderr("oops")`. Only presets stack (a narrowing with its own code is a different function); a chain
+setting the same parameter twice is refused (`print.full.shortest`); with `defaults.fixed`, a chain spelling out a
+default is refused (`print.shortest.stderr` → "write `print.stderr`").
+
+Owner asked why the collection writer doesn't refuse `std::print.shortest.stdout`; design claude proposed, owner:
+"yes". **`defaults.fixed [ … ];`** promises a function's defaults will never change; in return, **spelling them out is
+refused** (`print.shortest.stdout("hi")` → "write `print("hi")`"), as D39 does for language-fixed defaults. Plain
+`defaults` may change in a later version, so spelling them out stays allowed, to pin behaviour. **`std` uses
+`defaults.fixed`**, since its behaviour is part of the standard (D55). Bare `std::print(…)` is the everyday form.
+
 ---
 
 ## Open
 
-- Whether the writer's own types carry the D43 mark like functions (asked, not answered yet).
 
 - What "more diabolical" covers beyond D6–D12 (e.g. timing and side channels).
 - **Syntax phase** (owner: spellings get designed together, later). Collected so far: the contract keywords
