@@ -7,6 +7,7 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 
 | Term | In code | Meaning | Decision | Not used |
 |---|---|---|---|---|
+| SSS: Radium | — | The written standard (D55): the Soclets Software Standard for Radium | D109 | |
 | Geiger | `geiger` | Radium's prover | D67 | Precog (CyborgPL's), Radinum |
 | Curie | `curie` | Radium's compiler, and its command | D68 | `radium` (as a command), KAYO (CyborgPL's) |
 | check site | `CheckSite` | A place that could go wrong: overflow, out-of-range, bounds, division by zero, narrowing | D2 | |

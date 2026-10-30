@@ -2,7 +2,8 @@
 
 Design repository for **Radium**, a programming language for final products that cannot have any mistakes. Start
 with `DECISIONS.md` (every decision, numbered), `TERMS.md` (one name per concept), `design-rules/` (the general
-rules every new choice is checked against) and `implementation-rules/` (the rules for the code that implements it).
+rules every new choice is checked against), `implementation-rules/` (the rules for the code that implements it) and
+`standard/` (SSS: Radium, what every construct does).
 
 ## Ground rules
 
@@ -12,7 +13,8 @@ rules every new choice is checked against) and `implementation-rules/` (the rule
   always appear.
 - **Record each decision in `DECISIONS.md` as it is made**, noting whether the owner designed it or said yes to a
   proposal. Numbers are permanent (code cites them with `trace D<n>`, D18). New concepts go into `TERMS.md`. When a
-  decision creates or changes a general rule, update its file in `design-rules/` or `implementation-rules/` too.
+  decision creates or changes a general rule, update its file in `design-rules/` or `implementation-rules/` too. When
+  it settles behaviour, update `standard/` (SSS: Radium) and the oracle (D110).
 - **Commit and push only when the owner says so.** Commit messages follow D90: `kind.folder.narrowing: sentence`
   (see `implementation-rules/branches-and-merging.md`).
 

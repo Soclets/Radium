@@ -696,7 +696,7 @@ Proposed by design claude, owner: "yes". Of ISO C's four kinds of behaviour, Rad
 There is **no unspecified behaviour** (evaluation order is fixed; e.g. arguments left to right, `and`/`or` per D40)
 and **no undefined behaviour** (anything that could go wrong is a check site the prover must rule out, D2). The one
 place outside this is **inside a shield** (D6): the standard specifies the walls; the inside is the shield writer's
-responsibility. The standard's form and when it is written are open.
+responsibility. The standard's form and when it is written are open. Named "SSS: Radium" by D109.
 
 ## D56 — Failures are written as `fails` lines in the body (2026-10-30)
 
@@ -1725,6 +1725,33 @@ var $x = 3;                                  // refused: say the type, or `infer
 
 D14's "optional on locals, where the prover infers them" now needs `infer` written. Same idea as D98: nothing is left
 out silently.
+
+## D109 — The standard is "SSS: Radium" (2026-10-30)
+
+Owner: "SSS: Radium is the standard's name (Soclets Software Standard)". The written standard of D55 is called
+**SSS: Radium**, the **Soclets Software Standard** for Radium.
+
+## D110 — SSS: Radium starts now, alongside the oracle (2026-10-30)
+
+Design claude proposed, owner: "yes". The standard (D55, D109) is written **now**, in `standard/`, in plain Markdown,
+and **grows with the decisions** the way the oracle does (D93): one file per area. Each rule cites the decisions it
+comes from and the oracle tests that show it, so the decisions, the standard and the oracle point at each other.
+Only settled decisions go in; anything open says **"not decided"**. Behaviour is only defined or target-defined (D55).
+
+## D111 — How strongly operators bind (2026-10-30)
+
+Proposed by design claude, owner: "yes". Without brackets, operators bind in this order, strongest first:
+
+1. `-` before a value (`-$x`);
+2. `x`, `div`, `mod` (with their narrowings), as in school maths;
+3. `+`, `-`;
+4. comparisons: `<`, `>`, `at_most`, `at_least`, `equal`, `not_equal`;
+5. `not`;
+6. `and`, `or`.
+
+Operators of the same strength group from the left, as in school maths: `10 - 3 - 2` is `(10 - 3) - 2`. **Mixing
+`and` and `or` without brackets is refused**: write `$a or ($b and $c)`. Chained comparisons (`1 < $x < 5`) remain
+open.
 
 ---
 
