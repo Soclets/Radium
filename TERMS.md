@@ -69,6 +69,8 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | break | `break` | Stops the loop it is in | D77 | `stop`, `exit`, `leave`, `last` |
 | — | — | (No skip-this-trip statement: write the condition around the work) | D77 | `continue`, `skip`, `next` (as a statement) |
 | range | `range[from:, to:, before:, step_by:]` | A sequence of numbers a loop goes through (`for $i in range[…]`): `to:` includes the end, `before:` stops before it, `step_by:` is the step (default 1, negative counts down) | D73, D74 | `until:`, `by:`, `step:`, `steps:`, `every:`; "loop bounds" |
+| infer | `: infer` | Asks Geiger to work out a local value's type and bounds; locals only | D108 | leaving the type out |
+| wide integer | `int.wide[…]` | An integer whose bounds need more than 64 bits; Curie picks its width | D105, D107 | `int.any`, `int.auto`, `int.big` |
 | bounds | `min:`, `max:` | A type's lower and upper limits (`int[min: 0, max: 100]`) | D14, D74 | range (for limits) |
 | requirement | — | What a generic placeholder needs (`[?T: ordered]`: `?T` requires `ordered`) | D69, D74 | bound, trait bound |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |

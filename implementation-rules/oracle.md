@@ -1,10 +1,11 @@
 # The oracle
 
-From D16, D48 and D93.
+From D16, D48, D93 and D103.
 
 - **Purpose:** a runnable form of `DECISIONS.md`, so the design is enforced by something that doesn't drift.
 - **Written by the design session**, in Rust, in `oracle/`. It grows as decisions are made.
-- **Tests are small Radium programs** the owner can read, each tagged `// trace D<n>`.
+- **Tests are small Radium programs** the owner can read, one file each, whose comments say what should happen:
+  `// trace D<n>`, `// expect: <verdict>`, `// output: <line>`, `// here` (D103).
 - **Independent from the compiler:** no shared code, and the compiler session never reads the oracle's source, only
   its tests.
 - **It has its own `std`**, written in Rust, kept even after Radium's real `std` exists, so a disagreement catches a

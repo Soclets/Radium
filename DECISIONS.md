@@ -150,7 +150,7 @@ Owner's own design.
 
 Contracts are the first lines of the body (D53).
 
-## D14 — Integers (2026-10-29; width amended by D27)
+## D14 — Integers (2026-10-29; width amended by D27; local bounds need `infer`, D108)
 
 Owner: a fixed width written by the writer, refined by a range — conceptually `i32[min: 100, max: 200]` (owner: "not
 syntax"; the spelling is open). The prover checks every value stays within the range and the width.
@@ -1636,6 +1636,95 @@ end fn.main
 Design claude recommended one rule for every function; owner: "yes". **D96 covers `-> void` too**: every path
 through every function, `fn.main` included, ends in `return`, which for `void` is `return void;` (D100). Reaching
 `end fn` is never an implied return. Settles D100's open question.
+
+## D103 — Oracle tests carry their expectations in comments (2026-10-30)
+
+Design claude explained that the oracle drops comments while a separate test runner reads them as text, like D18's
+trace tags, and recommended keeping one file per test; owner: "Ah, yes". An oracle test is one `.ra` file whose
+comments say what should happen:
+
+- `// trace D<n>` — the decisions it tests (at least one);
+- `// expect: <verdict>` — exactly one: `runs`, `refused at line N`, `check fails at line N`, `not decided at line N`,
+  `not built at line N`, `gives up at line N`;
+- `// output: <text>` — one per printed line, in order;
+- `// here` — marks the line a verdict points at, for readers.
+
+To Radium they are ordinary comments (D87).
+
+## D104 — What is built in, and what is imported (2026-10-30)
+
+Owner asked whether very wide integers should be an import "like even binary floats", then whether D22's test ("same
+results on every target") or a new rule was better. Design claude found that D22's test, read alone, would pull lists,
+maps and decimals into the core against D70 and D23, and proposed this order; owner: "Yes".
+
+1. **If it can be written in Radium on top of the built-in types, it's a compound**: lists, maps (D70), decimals,
+   fixed-point (D23), probably text.
+2. **Otherwise, if it gives identical results on every target** (emulated where the hardware lacks it, D22), **it's
+   built in**: integers, `bool`, `array`, `struct`, `union.tagged`, `range`.
+3. **Otherwise, it's an isotope**: floats (D22, D24).
+4. **Exception: a wider version of a built-in type stays in that type.** A 256-bit integer is an `int`, with the same
+   rules and Geiger's same proofs, compiled straight to LLVM's wide integers; not a library.
+
+So **integers have no width cap** in the language: very wide ones are built in. "Rare" or "niche" is not a reason to
+import something. Open: whether widths above a normal limit must be written out, and that limit (settled by D105).
+
+## D105 — Integers wider than 64 bits write their width out (2026-10-30)
+
+Proposed by design claude, owner: "Yes". A bare `int[…]` takes the smallest width that holds its bounds (D27), **up to
+64 bits**, the widest every chip does natively. **Bounds that need more than 64 bits are refused on a bare `int`**,
+with the fix: write the width.
+
+```
+var $count: int[min: 0, max: 1000] = 0;            // Curie picks 16 bits
+var $huge: int[min: 0, max: 10_000_000_000_000_000_000_000_000_000_000_000_000_000] = 0;
+    // refused: 10 to the 40th needs 133 bits; write the width
+var $huge: int.unsigned.256_bit[min: 0, max: 10_000_000_000_000_000_000_000_000_000_000_000_000_000] = 0;   // accepted
+```
+
+Wide integers run in pieces and are slower, so they're visible where they're declared (D33, D81), never chosen
+silently.
+
+## D106 — A narrowing that lets Curie pick any width (2026-10-30; adds to D105)
+
+Owner's idea (`int.any[]`, "so they don't have to know the exact width"); owner: "yes". Besides a bare `int[…]` (up to
+64 bits) and an exact width (`int.unsigned.256_bit[…]`), **a narrowing of `int` lets Curie pick whatever width the
+bounds need, beyond 64 bits**, as D27 does below it. The narrowing keeps wide integers visible (D105) without making
+writers work out the bit count.
+
+Open: the word. Design claude flagged `any`, which means "type checking off" in TypeScript and "any type" in Go and
+Rust. Settled by D107.
+
+## D107 — `int.wide[…]`, only for bounds beyond 64 bits (2026-10-30)
+
+Cold test of `int.any`, `int.wide`, `int.auto`, `int.big`, `int.fit`; `auto` read as "pick for me", `wide` as "a wide
+width only". Owner then asked why a narrowing should allow small widths when bare `int` already covers them; design
+claude proposed making it wide-only, owner: "yes". **`int.wide[…]` is only for bounds that need more than 64 bits**;
+Curie picks the sign and width from the bounds (D27). Bounds that fit in 64 bits are refused on `int.wide`: "write
+`int[…]`". Each case has one spelling:
+
+| Bounds need | Written |
+|---|---|
+| up to 64 bits | `int[min: …, max: …]` |
+| more than 64 bits | `int.wide[min: …, max: …]` |
+| an exact width (formats, hardware) | `int.signed.N_bit[…]` / `int.unsigned.N_bit[…]` |
+
+## D108 — Every value states its type, or `infer` (2026-10-30; amends D14)
+
+Owner asked whether letting Geiger work out local bounds is useful; design claude listed the costs (a hidden choice,
+ranges readers can't see, confusing failures, an oracle that can't copy it). Owner proposed `var $count: infer = 0`;
+owner: "yes". **Every value states its type, or writes `: infer` to ask Geiger to work out its type and bounds. A value
+with neither is refused.** `infer` is allowed on **local values only**; parameters, results, fields and globals write
+their types (D14's edges).
+
+```
+var $count: infer = 0;                      // Geiger works out the type and bounds
+var $area: infer = $width x $height;
+var $limit: int[min: 0, max: 100] = 50;     // written out
+var $x = 3;                                  // refused: say the type, or `infer`
+```
+
+D14's "optional on locals, where the prover infers them" now needs `infer` written. Same idea as D98: nothing is left
+out silently.
 
 ---
 
