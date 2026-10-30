@@ -13,5 +13,5 @@ From D28, D31, D43 and D32. A mark says where a name comes from.
 - Values always carry `$`, so a value name never clashes with a language word, now or later.
 - A clash between a writer's function or type and a built-in is always a compile error with an exact fix (`my.…`),
   never a silent change of meaning.
-- Names the language provides carry no `$`, even values: `result`, `true`, `newline`.
+- Names the language provides carry no `$`, even values: `result`, `true`, `newln`.
 - A name that can't be written plainly (a C function called `end`, a name with a dash) is quoted (D32).

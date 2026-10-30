@@ -1,6 +1,6 @@
 # Choosing words
 
-From D34, D58 and D61.
+From D34, D58, D61 and D63.
 
 ## Check a word three ways first
 
@@ -17,17 +17,18 @@ A word whose programming meaning is split or misleading is avoided: `record` (Ja
 
 ## Short forms
 
-> A short form is used only when it is **already settled for programmers** (the same spelling across major
-> languages) **or for everyone** (maths notation, everyday use). Either one is enough. Otherwise, the full word.
+> A short form is allowed if **the owner reads it correctly, shown cold** — on its own, without context or the full
+> word. Each verdict is recorded below; once recorded, a word isn't re-judged. (D63, replacing D61's "settled for
+> programmers or for everyone".)
 
-| Short form | Settled for | |
-|---|---|---|
-| `int`, `bool`, `struct`, `const`, `var`, `std` | programmers | ✅ |
-| `fn` | everyone (the Fn key) | ✅ |
-| `min`, `max`, `mod` | everyone (maths, everyday) | ✅ |
-| `len`, `newln` | neither | ❌ — `length`, `newline` |
+**Allowed:** `bin`, `bool`, `char`, `config`, `const`, `deci`, `div`, `err`, `fmt`, `fn`, `immut`, `int`, `max`,
+`min`, `mod`, `msg`, `mut`, `newln`, `ptr`, `std`, `stderr`, `stdout`, `str`, `struct`, `var`.
 
-This is for the language's own words. Names in the implementation's code follow D19.
+**Refused, written in full:** `buf` → `buffer`, `cfg` → `config`, `ctx` → `context`, `idx` → `index`, `len` →
+`length`.
+
+A new short form is shown to the owner cold and added to one list or the other. This is for the language's own words;
+names in the implementation's code follow D19.
 
 ## Symbols or words
 

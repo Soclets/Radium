@@ -41,6 +41,8 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | struct | `Struct` | Named fields stored together as one value | D58 | record |
 | tagged union | `TaggedUnion` | `union.tagged`: a value that is one of several named cases, which may carry data | D59 | enum, sum type, variant |
 | union | `RawUnion` | Bare `union`: C's untagged union, allowed only inside shields | D59 | |
+| position | `pos:` | An index counting from 1: `pos: 1` is the first item | D64 | index |
+| offset | `offset:` | An index counting from 0: `offset: 0` is the start | D64 | index |
 | range | `Range` | The `min`/`max` refinement on a fixed-width integer | D14 | |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
 | own-name mark | — | `my.`, needed only when the writer's function or type name clashes with a built-in (`my.reading`) | D43 | own-function mark |

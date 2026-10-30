@@ -8,7 +8,7 @@ Identity (repo description, `Soclets/Radium`): *"Radium: slowly kills you via th
 compile times. Glow in the dark via the clear syntax. It also has a safety radius."* A steep learning curve and slow
 compiles are accepted, never an argument against an option. Clear syntax is required.
 
-License: Apache 2.0.
+Licences (D65): Apache-2.0 WITH LLVM-exception for code; CC BY 4.0 for the Markdown text.
 
 Syntax in code samples below is placeholder unless a decision says otherwise.
 
@@ -398,9 +398,10 @@ Owner, after "as a non programmer, I find myself hard to read their symbols"; de
 Owner asked why `not.equals` wasn't `_`. **`.` narrows** (D26): a specific version of the thing before it
 (`div.floor`). **`_` joins** words into one name (`not_equal`, `at_most`, `32_bit`).
 
-## D36 — `newline` (2026-10-30)
+## D36 — `newline` (2026-10-30; replaced by D63: `newln`)
 
 Owner: `newln` becomes `newline` (by the owner's `len` rule, D19: two letters saved isn't worth decoding).
+**Replaced by D63** the same day: under the new abbreviation rule the owner chose `newln`.
 
 ## D37 — Division (2026-10-30)
 
@@ -580,7 +581,7 @@ open but is not a backtick. Close to Swift's lifetime dependencies. The ownershi
 Owner pointed to CyborgPL's rule (its design session briefed the details); design claude proposed adopting it with
 grouping declared up front; owner: "yes".
 
-- **`( )` runs something: a call.** `first_word("hello there", 20)`, `std::print("hi", newline)`.
+- **`( )` runs something: a call.** `first_word("hello there", 20)`, `std::print("hi", newln)`.
 - **`[ ]` describes or holds everything else:** a definition's parameters (`fn first_word [$text: str.utf8, $limit:
   int[min: 1, max: 80]] -> str.utf8:`), types and a function's type, ranges (`int[min: 1, max: 99]`), indexes,
   building a struct or a failure, a loop's range.
@@ -809,7 +810,7 @@ Proposed by design claude, owner: "yes". True/false values are **`bool`**, with 
 condition accepts only a `bool`: numbers, text and lists never count as true or false (`if $count:` is refused;
 write `if $count > 0:`), since "truthy" values are a trap (D33).
 
-## D61 — Abbreviations in the language (2026-10-30)
+## D61 — Abbreviations in the language (2026-10-30; test replaced by D63)
 
 Owner noticed `bool` saves only three letters, which D19's rule wouldn't allow, yet `bool` and `struct` feel right;
 then that `fn` is on keyboards (the Fn key), and that "normal people don't know `struct`". Design claude proposed,
@@ -833,6 +834,82 @@ Owner: "Make a separate folder just for design rules, in the GH repo." **`design
 the design is judged by, one file each, citing the decisions they came from: clear syntax (D33), choosing words (D34,
 D58, D61), dots and underscores (D26, D35), brackets (D50), marks (D28, D31, D43), defaults (D27, D39, D42, D57).
 DECISIONS.md stays the record; when a rule changes, it gets a new entry here and the rule's file is updated.
+
+## D63 — Abbreviations: what the owner reads correctly (2026-10-30; replaces D61's test)
+
+Owner, after comparing a strict rule ("same spelling across languages") with a loose one ("programmers read it
+instantly"): "This one is cursed, but it's technically consistent. Whatever I can read correctly." Design claude
+added two safeguards; owner: "Let's go". **A short form is allowed if the owner reads it correctly, shown cold** —
+on its own, without context or the full word — and **each verdict is recorded** in the list below and in
+`design-rules/choosing-words.md`. Once recorded, a word is not re-judged, so the rule doesn't drift as the owner
+learns. Anyone can apply the rule by reading the list. Replaces D61's test; D61's table becomes the first set of
+words to judge.
+
+Verdicts (2026-10-30, three words at a time):
+
+| Short form | Owner read it as | Verdict |
+|---|---|---|
+| `buf` | — ("nope") | ❌ `buffer` |
+| `deci` | decimal | ✅ |
+| `ctx` | — ("nope") | ❌ `context` |
+| `mut` | mutable | ✅ |
+| `idx` | — ("nope") | ❌ `index` |
+| `bin` | binary | ✅ |
+| `fmt` | format | ✅ |
+| `immut` | "same as [mut], but false" — immutable | ✅ |
+| `ptr` | pointer | ✅ |
+| `err` | error | ✅ |
+| `msg` | message | ✅ |
+| `len` | — ("nope", shown cold) | ❌ `length` |
+| `char` | character | ✅ |
+| `div` | divide | ✅ |
+| `cfg` | — ("nope") | ❌ `config` |
+| `config` | config — "I thought that was the full word actually" (short for configuration, read as a word) | ✅ |
+| `stdout` | standard output | ✅ |
+| `mod` | modulo | ✅ |
+| `const` | constant | ✅ |
+| `std` | standard | ✅ |
+| `int` | integer | ✅ |
+| `struct` | struct — "thought that was the full word" (read as a word) | ✅ |
+| `var` | variable | ✅ |
+| `fn` | function | ✅ |
+| `bool` | boolean | ✅ |
+| `stderr` | standard error output | ✅ |
+| `min` | minimum | ✅ |
+| `max` | maximum | ✅ |
+| `newln` | newline — "most langs already do `ln` for line" (not cold: discussed in D36) | ✅ — and **replaces D36's `newline`** (owner: "the rule only exists now, and I think it's a better one. `newln`") |
+
+Result: 25 allowed (`deci`, `mut`, `bin`, `fmt`, `immut`, `ptr`, `err`, `msg`, `char`, `div`, `str`, `stdout`,
+`mod`, `const`, `std`, `config`, `int`, `struct`, `var`, `fn`, `bool`, `stderr`, `min`, `max`, `newln`); 5 refused
+(`buf`, `ctx`, `idx`, `len`, `cfg` — written `buffer`, `context`, `index`, `length`, `config`). New short forms are judged the same way
+as they come up.
+| `str` | string (not fully cold: seen in an earlier table; owner's first remark, "why do I see `str` as `string`", came before it) | ✅ |
+
+## D64 — List types (2026-10-30)
+
+Proposed by design claude, owner: "yes". A list type is **one bracket**: what it holds first, unlabelled, then its
+length range with labels — `list[int[min: 0, max: 100], min: 0, max: 50]`. `[ ]` describes (D50); the main thing
+stays bare and the rest is labelled (D54); `min:`/`max:` read as they do on `int`. As with integers (D14), a list at
+the edges (parameters, return values, fields, globals) needs its length range.
+
+**Positions** (2026-10-30). Shown cold, with `["apple", "banana", "cherry"]`, the owner read `pos: 1` → apple,
+`pos: 0` → "the thing before apple, which doesn't exist", `offset: 1` → banana, `offset: 0` → apple; "So, honestly?
+Labels are important." So: **`pos:` counts from 1** (a position: first, second) and **`offset:` counts from 0** (a
+distance from the start), each label with one meaning, and **an index always has its label** — a bare `$xs[1]` is
+refused, since its counting would be invisible. Proposed by design claude, owner: "yes": **both labels exist** —
+`pos:` for ordinary code ("the second item"), `offset:` for byte-level work where specs speak in offsets (file
+formats, packets, C interop), so neither kind of code needs `+ 1` / `- 1` adjustments.
+
+## D65 — Licences (2026-10-30)
+
+Owner: "where's the LLVM exception, and CC BY 4.0?" Design claude proposed matching CyborgPL; owner: "yes". Replaces
+the plain Apache 2.0 of the first commit.
+
+- **`LICENSE`: Apache-2.0 WITH LLVM-exception**, for all code. Radium's runtime and `std` are compiled into every
+  program; the exception waives Apache's notice requirements for that compiled output, so **programs built with
+  Radium owe nothing**. (The LLVM project's own licence.)
+- **`LICENSE-CC-BY-4.0`: CC BY 4.0**, for the repo's writing — every Markdown file. Credit line:
+  `Radium GitHub repo text: https://github.com/Soclets/Radium`. Code and code comments stay under `LICENSE`.
 
 ---
 
