@@ -56,10 +56,15 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | map | `std::map.sorted` / `.inserted` / `.unordered` | Key–value lookup in `std`; the kind names its order | D66, D70 | dict, hash map |
 | position | `pos:` | An index counting from 1: `pos: 1` is the first item | D64 | index |
 | offset | `offset:` | An index counting from 0: `offset: 0` is the start | D64 | index |
+| program start | `fn.main` | The function where the program starts; nothing may call it | D101 | `main:` … `end main`, `fn main` |
+| void | `-> void` | What a function that gives nothing back writes as its result (D98) | D99 | `nothing`, `none`, `unit`, leaving out `->` |
 | give | `Give` | Hand over ownership; the giver can't use the value afterwards | D80, D84 | move, `give` (lowercase) |
 | copy | `Copy` | Hand over a separate copy; the original is untouched | D80, D84 | clone, `copy` (lowercase) |
 | lend | `Lend` | Temporary read-only access; the owner keeps the value | D80, D84 | borrow, `&`, `lend` (lowercase) |
 | lend.mut | `Lend.mut` | Temporary access that may change the value; the owner keeps it | D80, D84 | mutable borrow, `&mut`, `lend.mut` (lowercase) |
+| lent (parameter) | bare (`Lent` is refused) | A parameter the function only reads; the caller keeps the value (call side: `Lend`). The default for a parameter | D91, D92 | `Lend` in parameters, `Lent` written alone |
+| lent.mut (parameter) | `Lent.mut` | A parameter the function may change; the caller keeps the value (call side: `Lend.mut`) | D91 | `Lend.mut` in parameters |
+| given (parameter) | `Given` | A parameter the function owns from then on (call side: `Give` or `Copy`) | D91 | `Give` in parameters, owned |
 | linear value | `must_Give` | A value that must be handed off with `Give` exactly once before it goes out of scope | D5, D84 | `linear`, `must_use`, `once`, `must_finish` |
 | break | `break` | Stops the loop it is in | D77 | `stop`, `exit`, `leave`, `last` |
 | — | — | (No skip-this-trip statement: write the condition around the work) | D77 | `continue`, `skip`, `next` (as a statement) |
@@ -68,6 +73,7 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | requirement | — | What a generic placeholder needs (`[?T: ordered]`: `?T` requires `ordered`) | D69, D74 | bound, trait bound |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
 | own-name mark | — | `my.`, needed only when the writer's function or type name clashes with a built-in (`my.reading`) | D43 | own-function mark |
+| newline | `newline` | The line break `std::print` writes when given it | D94 | `newln` |
 | comment | `// ` | Text for readers, from `//` and a space to the end of the line | D85, D87 | `#` (as a comment mark) |
 | comment block | `comment:` … `end comment` | A comment that spans lines; blank lines inside belong to it | D86 | `#[ … ]`, `/* */` |
 | section marker | — | `// section a.b:` … `// end section a.b` | D18 | |

@@ -1,6 +1,6 @@
 # Choosing words
 
-From D34, D58, D61 and D63.
+From D34, D58, D61, D63 and D94.
 
 ## Check a word three ways first
 
@@ -17,18 +17,23 @@ A word whose programming meaning is split or misleading is avoided: `record` (Ja
 
 ## Short forms
 
-> A short form is allowed if **the owner reads it correctly, shown cold** — on its own, without context or the full
-> word. Each verdict is recorded below; once recorded, a word isn't re-judged. (D63, replacing D61's "settled for
-> programmers or for everyone".)
+> 1. **If programming has a settled word for it, use that word**, short or not: `bool`, `const`, `struct`, `int`.
+> 2. **Otherwise, write the full word, unless the short form saves 4 or more letters *and* the owner reads it
+>    correctly cold.** (D94, refining D63; three letters isn't real length, as `len` → `length` showed.)
 
-**Allowed:** `bin`, `bool`, `char`, `config`, `const`, `deci`, `div`, `err`, `fmt`, `fn`, `immut`, `int`, `max`,
-`min`, `mod`, `msg`, `mut`, `newln`, `ptr`, `std`, `stderr`, `stdout`, `str`, `struct`, `var`.
+**Kept:** `bool`, `char`, `config`, `const`, `div`, `int`, `max`, `min`, `mod`, `std`, `stderr`, `stdout`, `struct`,
+`var` (settled words); `fn`, `immut`, `mut`, `ptr` (save 4 or more, read cold).
 
-**Refused, written in full:** `buf` → `buffer`, `cfg` → `config`, `ctx` → `context`, `idx` → `index`, `len` →
-`length`.
+**Written in full:** `bin` → `binary`, `deci` → `decimal`, `err` → `error`, `fmt` → `format`, `newln` → `newline`,
+`str` → `string`; and, from D63, `buf` → `buffer`, `cfg` →
+`config`, `ctx` → `context`, `idx` → `index`, `len` → `length`.
 
-A new short form is shown to the owner cold and added to one list or the other. This is for the language's own words;
-names in the implementation's code follow D19.
+All of D63's words have been re-judged (D94).
+
+Only Radium's own words are judged: a writer's names (`$msg`) aren't, so `msg` has no verdict (D94).
+
+A new short form goes through both steps and is added to one list or the other. This is for the language's own
+words; names in the implementation's code follow D19.
 
 ## Symbols or words
 

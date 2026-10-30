@@ -13,7 +13,8 @@ rules every new choice is checked against) and `implementation-rules/` (the rule
 - **Record each decision in `DECISIONS.md` as it is made**, noting whether the owner designed it or said yes to a
   proposal. Numbers are permanent (code cites them with `trace D<n>`, D18). New concepts go into `TERMS.md`. When a
   decision creates or changes a general rule, update its file in `design-rules/` or `implementation-rules/` too.
-- **Commit and push only when the owner says so.**
+- **Commit and push only when the owner says so.** Commit messages follow D90: `kind.folder.narrowing: sentence`
+  (see `implementation-rules/branches-and-merging.md`).
 
 ## Sessions
 

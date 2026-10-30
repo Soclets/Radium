@@ -136,7 +136,7 @@ Proposed by design claude, owner: "yes". In the final build a site is proven onl
 Bruijn criterion). Fallback: where no certificate can be produced or checked, both solvers agreeing still counts, and
 the report marks the site "solver-agreed, not certificate-checked". Disagreement = unproven.
 
-## D13 — Block delimiters (2026-10-29)
+## D13 — Block delimiters (2026-10-29; `main` replaced by D101: `fn.main`)
 
 Owner's own design.
 
@@ -506,7 +506,7 @@ Documents", which clashes with Radium being written largely by Claude sessions. 
 definitely not a good idea anymore" — **MISRA's documents are not used**, bought or otherwise, and its rule text must
 not enter the project.
 
-## D45 — Branches and a local merge bot (2026-10-30)
+## D45 — Branches and a local merge bot (2026-10-30; amended by D89: the design session commits to `main`)
 
 Owner suggested a merge bot and automatic tests, noting CyborgPL's tests are slow enough to run locally; design
 claude proposed the shape, owner: "yes". No pull requests: sessions work with the owner present, so a PR would only
@@ -560,7 +560,7 @@ owner's and the session's) drifts. So it is **written by the design session**, a
 decisions, growing as decisions are made; each one gets tests tagged `trace D<n>` (D18), written as small Radium
 programs the owner can read. Rust (D46), in `oracle/`. The compiler session never reads the oracle's source, only its
 tests, so the two stay independent implementations. **Not started until the syntax phase is done** (owner: "don't
-build it now. We haven't done syntax yet").
+build it now. We haven't done syntax yet"); replaced by D93: it starts with the settled parts.
 
 Revised the same day, owner: "yes". **The oracle has its own `std`, written in Rust**, built before Radium's real
 `std` exists (owner: CyborgPL "didn't get `std` written in itself for dozens of days"). It is D47's sketch made
@@ -603,7 +603,7 @@ Proposed by design claude, owner: "yes": **contracts may call only `fn.pure` fun
 invariants, failure conditions, termination measures. A contract must never do anything, or a program would behave
 differently in mode 2 (contracts checked at run time) and the final build (proven away). As in Dafny and SPARK.
 
-## D52 — The result type: `->` (2026-10-30)
+## D52 — The result type: `->` (2026-10-30; "leave it out" replaced by D98)
 
 Proposed by design claude, owner: "yes". A function's result type follows `->` after the parameters:
 `fn first_word [$text: str.utf8, …] -> str.utf8:`. A function with no result leaves it out:
@@ -836,7 +836,7 @@ the design is judged by, one file each, citing the decisions they came from: cle
 D58, D61), dots and underscores (D26, D35), brackets (D50), marks (D28, D31, D43), defaults (D27, D39, D42, D57).
 DECISIONS.md stays the record; when a rule changes, it gets a new entry here and the rule's file is updated.
 
-## D63 — Abbreviations: what the owner reads correctly (2026-10-30; replaces D61's test)
+## D63 — Abbreviations: what the owner reads correctly (2026-10-30; replaces D61's test; test refined by D94)
 
 Owner, after comparing a strict rule ("same spelling across languages") with a loose one ("programmers read it
 instantly"): "This one is cursed, but it's technically consistent. Whatever I can read correctly." Design claude
@@ -1296,8 +1296,8 @@ archive(Give $copy_of_text);
 close(Give $f);
 ```
 
-The same word appears in a parameter that takes ownership: `fn close [$f: Give open_file]:` (parameter syntax
-otherwise a placeholder).
+A parameter that takes ownership was sketched as `fn close [$f: Give open_file]:`; replaced by D91
+(`[$f: Given open_file]`).
 
 **Linear values (D5)**: a type narrowed with **`must_Give`** must be handed off with `Give` exactly once before it goes
 out of scope: lending doesn't count, forgetting or giving twice is a compile error (not a warning, unlike Rust's
@@ -1373,6 +1373,269 @@ that implements Radium, one file each, citing the decisions they came from: lang
 comments and tracing (D18), code style (D20), C++ (D44), backend (D17, D83), proof trust (D12, D16), the oracle (D16,
 D48), branches and merging (D45). As with `design-rules/` (D62), DECISIONS.md stays the record; when a rule changes,
 it gets a new entry here and the rule's file is updated.
+
+## D89 — The design session controls `main` (2026-10-30; amends D45)
+
+Owner: "you're supposed to do the oracle yourself, and you control main." The design session commits straight to
+`main`, its oracle work included, and still only when the owner says so. D45's own-branch and merge-bot flow applies
+to the other sessions (compiler, `std`, …); the bot is the only thing that merges *their* branches into `main`.
+
+## D90 — Commit style: CyborgPL's `kind.folder.narrowing: sentence` (2026-10-30)
+
+Owner asked for a commit style before the oracle starts; design claude first proposed a flat `area: summary` style,
+then, after reading CyborgPL's (its CLAUDE.md, owner 2026-09-23), recommended taking CyborgPL's instead, since it uses
+`.` narrowing exactly as D26 does. Owner: "yes".
+
+- **Subject:** `kind.folder.narrowing: sentence`. **Kinds:** `decision`, `design`, `feature`, `fix`, `test`, `house`.
+  The second word is the folder (`oracle`, later `curie`, `geiger`, `std`, …), or the topic for `decision`, `design`
+  and `house` (`decision.ownership`, `house.readme`, `house.brand`). The third word is optional; there is never a
+  fourth.
+- **Who decided** goes in brackets at the end, with the decision number in Radium: `(owner: yes; D84)`.
+- **Body** (optional): wrapped lines saying what was done and why. Commits that carry out decisions in code add a
+  **`Trace: D<n>, …`** line, like the `// trace D<n>` tags (D18).
+- **Last line:** the session's house-name co-author line (`CLAUDE.md`).
+
+```
+decision.ownership.capitals: ownership words start with a capital; linear values are must_Give (owner; D84)
+fix.oracle.bounds: an assignment outside the type's bounds was accepted in mode 1
+```
+
+## D91 — Parameters say `Lent`, `Lent.mut`, `Given` (2026-10-30)
+
+Design claude showed two options: the call's own words in parameters (`[$text: Lend str.utf8]`), or describing words,
+since a call `( )` does something and a definition `[ ]` describes (D50). Owner: "`Lent`, and `Given` at params".
+
+```
+fn first_word [$text: Lent str.utf8, …] -> str.utf8:
+fn add_row [$t: Lent.mut transaction, …]:
+fn close [$f: Given open_file]:
+
+first_word(Lend $text, limit: 20);
+add_row(Lend.mut $t, "hi");
+close(Give $f);
+```
+
+- The call says what the caller does (`Lend`, `Lend.mut`, `Give`, `Copy`, D80, D84); the parameter says how the
+  function holds it (`Lent`, `Lent.mut`, `Given`). Capitalised like the call words (D84).
+- `Copy` has no parameter word: a copy is handed over as the function's own, so it goes to a `Given` parameter.
+- `Lent.mut` narrows `Lent` (D26), matching `Lend.mut`.
+
+Open: what a parameter with no ownership word means (`[$text: str.utf8]`). Integers are copied, so it matters from
+structs, arrays and text on. (Settled by D92.)
+
+## D92 — A bare parameter is lent; a written-out `Lent` is refused (2026-10-30; amends D91)
+
+Design claude first recommended refusing a bare parameter; owner asked whether bare = `Lent` is sensible. Checked
+against the defaults rule, design claude changed its recommendation; owner: "yes".
+
+- **A parameter with no ownership word is lent**: the function can only read it, and the caller keeps it. It is the
+  least a function can do with a value, so it hides no choice (D27); most parameters are only read; and it matches a
+  parameter being `var.immut` by default.
+- **Writing `Lent` alone is refused**, as a language default spelled out (D39): "write the bare parameter". `Lent`
+  remains the word `Lent.mut` narrows from (D26).
+
+```
+fn first_word [$text: str.utf8, …] -> str.utf8:   // lent
+fn add_row [$t: Lent.mut transaction, …]:
+fn close [$f: Given open_file]:
+```
+
+The call still says `Lend $text` (D80, D84). Values that are always copied (integers, `bool`) take no word.
+
+## D93 — The oracle starts now, with the settled parts (2026-10-30; replaces D48's start date)
+
+Design claude listed what a first slice would cover and leave out; owner: "yes, go". D48 said the oracle starts after
+the syntax phase; it **starts now**, in `oracle/`, with only what is settled, and grows as decisions land:
+
+- **First slice:** blocks and `end` (D13), `;` (D29), comments (D86, D87), `var`/`var.immut`/`var.mut`/`const` and
+  `$` (D30, D31), `int[min: …, max: …]` and `bool` (D14, D27, D60), `+`, `-`, `x`, `div`, `mod`, comparisons and
+  `and`/`or`/`not` (D34–D40), `if` (D71), `for … in range[…]`, `while … decreases`, `forever`, `break` (D73–D77),
+  `fn`/`fn.pure`, labels, defaults, `requires`, `ensures`, `old[…]` (D51–D54), `std::print`.
+- **Every check site is checked as the program runs** (bounds, exact `div`, `mod`, contracts, `decreases`), as in
+  mode 2 (D9). The oracle proves nothing; that is Geiger's job.
+- **Anything still open is reported as "not decided"**, never guessed; anything decided but not yet in the oracle is
+  "not built".
+- Where the oracle had to read a decision one way to run at all, the reading is listed in `oracle/README.md` as
+  provisional, for the owner to rule on.
+
+D48's other parts stand: the design session writes it, in Rust, tests are small Radium programs tagged
+`// trace D<n>`, and the compiler session never reads its source.
+
+## D94 — Abbreviations: the settled word, or the full word unless it saves 4+ letters (2026-10-30; refines D63)
+
+Owner: `str` could become `string` ("adds potential clarity, and `str` saves three chars anyways"), as `len` became
+`length`; then asked for the refined rule. Design claude proposed it, owner: "yes". For Radium's own words:
+
+1. **If programming has a settled word for it, use that word**, short or not (D58's keyword rule): `bool`, `const`,
+   `struct`, `int`.
+2. **Otherwise, write the full word, unless the short form saves 4 or more letters *and* the owner reads it
+   correctly cold** (D63). Three letters isn't real length: `len` → `length` saved three and was refused (D19).
+
+D63's allowed list is re-judged by this rule, five words per turn. First five:
+
+| Word | Settled word? | Saves | Result |
+|---|---|---|---|
+| `err` | no | 2 | **`error`** |
+| `newln` | no | 2 | **`newline`** (reverses D63's `newln`) |
+| `bin` | no | 3 | **`binary`** (`@float.binary.32_bit`) |
+| `bool` | yes | — | **`bool`** |
+| `const` | yes | — | **`const`** |
+
+Second five, owner: "yes":
+
+| Word | Settled word? | Saves | Result |
+|---|---|---|---|
+| `str` | no: `string` is (C#, Go, Java, Swift, TypeScript, C++) | 3 | **`string`** (`string.utf8`) |
+| `deci` | no | 3 | **`decimal`** (`@float.@decimal.32_bit`) |
+| `fmt` | no: `format` is more common | 3 | **`format`** |
+| `div` | yes: the word-operator for integer division (Pascal, Haskell, Oberon) | — | **`div`** |
+| `mod` | yes: the word-operator for remainder (Pascal, Haskell, Ada, Fortran) | — | **`mod`** |
+
+Earlier samples that say `str.utf8`, `deci` or `bin` mean the full words now.
+
+Third five, owner: "yes":
+
+| Word | Settled word? | Saves | Result |
+|---|---|---|---|
+| `int` | yes (C, C++, Java, C#, Go, Swift) | — | **`int`** |
+| `max` | yes | — | **`max`** |
+| `min` | yes | — | **`min`** |
+| `mut` | no: only Rust; C++ and OCaml say `mutable` | 4, read cold (D63) | **`mut`** |
+| `immut` | no | 4, read cold (D63) | **`immut`** |
+
+Owner, on `msg`: "what is `msg` even for? A message, for what", and "`msg` isn't in the same category as those. Those
+are real syntax, `msg` isn't". **`msg` is taken off the list with no verdict**: it came from design claude's starting
+table (D61), and its only appearance was `$msg`, a writer's own value name, which the rule doesn't cover. `ptr`,
+`char` and `config` stay on the list, as words Radium's syntax will use.
+
+Fourth five, owner: "yes":
+
+| Word | Settled word? | Saves | Result |
+|---|---|---|---|
+| `struct` | yes (D58) | — | **`struct`** |
+| `var` | yes (JavaScript, C#, Go, Swift, Kotlin) | — | **`var`** |
+| `char` | yes (C, C++, Java, C#, Rust) | — | **`char`** |
+| `ptr` | fairly (`unique_ptr`, Rust's `std::ptr`) | 4, read cold (D63) | **`ptr`** |
+| `config` | yes, read as a word of its own | — | **`config`** |
+
+Last four, owner: "yes":
+
+| Word | Settled word? | Saves | Result |
+|---|---|---|---|
+| `fn` | split (`fn`, `func`, `fun`, `function`) | 6, read cold (D63) | **`fn`** |
+| `std` | yes (C++, Rust) | — | **`std`** |
+| `stdout` | yes (C, Unix) | — | **`stdout`** |
+| `stderr` | yes | — | **`stderr`** |
+
+**Re-judging done.** Written in full: `binary`, `decimal`, `error`, `format`, `newline`, `string` (and D63's `buffer`,
+`config` for `cfg`, `context`, `index`, `length`). Kept: `bool`, `char`, `config`, `const`, `div`, `fn`, `immut`,
+`int`, `max`, `min`, `mod`, `mut`, `ptr`, `std`, `stderr`, `stdout`, `struct`, `var`. `msg` has no verdict.
+
+## D95 — `return` gives back a function's result (2026-10-30)
+
+Design claude asked whether a function hands back its value with `return` or another way (e.g. the last line);
+owner: "yes" to `return`. A function with a result (`->`, D52) gives it back with **`return value;`**, which ends the
+function there:
+
+```
+fn double [$n: int[min: 0, max: 9]] -> int[min: 0, max: 18]:
+    ensures result equal $n x 2;
+    return $n x 2;
+end fn double
+
+main:
+    var $answer = double(4);
+end main
+```
+
+The value is checked against the result type's bounds (D14), and `result` in an `ensures` is that value (D53). Such a
+function can now be called inside a value (`double(4) + 1`); contracts may call only `fn.pure` functions (D51).
+
+Open: whether every path through a function must end in `return` (settled by D96); a bare `return;` in a function
+without a result; `return` in `main`; calling a function with a result and ignoring it (settled by D97).
+
+## D96 — Every path through a function with `->` ends in `return` (2026-10-30)
+
+Proposed by design claude, owner: "yes". A function with a result is **refused if any path can reach its `end`
+without `return`**. Paths are judged by the code's shape, as in Rust and Java: the last line returns, or is an
+`if` … `else` whose every branch returns, or is a `forever` that nothing breaks out of. A loop that might run zero
+times, or an `if` with no `else`, doesn't count as returning.
+
+```
+fn sign [$n: int[min: -9, max: 9]] -> int[min: -1, max: 1]:
+    if $n < 0:
+        return -1;
+    end if
+end fn sign          // refused: a non-negative $n reaches here with nothing to give back
+```
+
+## D97 — A result can't be ignored (2026-10-30)
+
+Proposed by design claude, owner: "yes". **Calling a function with a result as a statement on its own, throwing the
+result away, is refused**, for every function (Rust only warns, and only for some):
+
+```
+main:
+    double(4);       // refused: the result is thrown away
+end main
+```
+
+Open: a way to throw a result away on purpose, so it shows in the code.
+
+## D98 — Every function states its result (2026-10-30; amends D52)
+
+Owner's idea ("What if just make it say `-> nothing`?"), after asking how a forgotten `->` together with a forgotten
+value would be caught; owner: "yes". **Every function writes `->` and what it gives back; a function with no `->` is
+refused.** D52's "a function with no result leaves it out" no longer holds. Giving nothing back is written, not
+implied by a missing part (D33), so forgetting `->` is caught at the definition. `main` keeps its own form (D13).
+
+Open: the word for "gives nothing back" (settled by D99).
+
+## D99 — `-> void` (2026-10-30)
+
+Design claude compared `void`, `nothing`, `none`, `unit` and `empty` (D58's three-way check) and recommended `void`,
+the settled programming word for "no value"; `nothing` reads well in English but means "never returns" in Kotlin and
+Scala. Owner: "yes". A function that gives nothing back is written **`-> void`**:
+
+```
+fn show [$n: int[min: 0, max: 9]] -> void:
+    std::print($n, newline);
+    return void;
+end fn show
+```
+
+## D100 — `return void;` (2026-10-30)
+
+Owner asked whether to add a word to a bare `return;`; design claude proposed `return void;`, owner: "yes". **A `void`
+function returns with `return void;`**, mirroring its `-> void`. **A bare `return;` is refused**, so every `return`
+says what it gives back, and a forgotten value is never mistaken for an empty return.
+
+Open: whether a `void` function must end every path with `return void;` (as D96 asks of every function with `->`) or
+may reach `end fn` (settled by D102); and `main` (settled by D101).
+
+## D101 — The program starts at `fn.main` (2026-10-30; replaces D13's `main:` block)
+
+Owner asked whether `main` should become a `fn`; design claude proposed `fn main`; owner proposed **`fn.main`**,
+"because you can't call it, but you can call the other `fn`". Owner: "yes". The start of the program is a function
+narrowed with `.main` (D26): a function with one more promise, checked by the compiler, that **it is where the
+program starts and nothing may call it**. It is a kind, not a name, so `main` isn't reserved as a function name.
+
+```
+fn.main [] -> void:
+    show(3);
+    return void;
+end fn.main
+```
+
+- Exactly one `fn.main` per program; it has no name of its own, and closes with `end fn.main` (D13).
+- It follows the same `->` and `return` rules as every function (D96, D98, D100).
+- D13's `main:` … `end main` is no longer used.
+
+## D102 — `void` functions end every path with `return void;` (2026-10-30)
+
+Design claude recommended one rule for every function; owner: "yes". **D96 covers `-> void` too**: every path
+through every function, `fn.main` included, ends in `return`, which for `void` is `return void;` (D100). Reaching
+`end fn` is never an implied return. Settles D100's open question.
 
 ---
 
