@@ -1,0 +1,18 @@
+// trace D51
+// trace D53
+// expect: runs
+// output: 4
+fn.pure limit [] -> int[min: 0, max: 9]:
+    return 5;
+end fn limit
+
+fn show [$n: int[min: 0, max: 9]] -> void:
+    requires $n at_most limit();
+    std::print($n, newline);
+    return void;
+end fn show
+
+fn.main [] -> void:
+    show(4);
+    return void;
+end fn.main

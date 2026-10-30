@@ -1,0 +1,6 @@
+// trace D14
+// expect: refused at line 4
+fn.main [] -> void:
+    var $bad: int[min: 10, max: 1] = 5; // here
+    return void;
+end fn.main

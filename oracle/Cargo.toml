@@ -1,0 +1,24 @@
+[package]
+name = "oracle"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0 WITH LLVM-exception"
+description = "The Radium oracle: DECISIONS.md made runnable (D48, D93)"
+publish = false
+
+[dependencies]
+
+# implementation-rules/code-style.md (D20): pedantic clippy, warnings as errors, and no `unwrap`/`expect` or
+# panicking in trusted code. The oracle counts as trusted: it is what the design is checked against.
+[lints.rust]
+unsafe_code = "forbid"
+missing_docs = "deny"
+warnings = "deny"
+
+[lints.clippy]
+pedantic = { level = "deny", priority = -1 }
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+indexing_slicing = "deny"
+arithmetic_side_effects = "deny"

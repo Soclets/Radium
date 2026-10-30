@@ -1,0 +1,12 @@
+// trace D96
+// expect: refused at line 3
+fn sign [$n: int[min: -9, max: 9]] -> int[min: -1, max: 1]: // here
+    if $n < 0:
+        return -1;
+    end if
+end fn sign
+
+fn.main [] -> void:
+    std::print(sign(3), newline);
+    return void;
+end fn.main

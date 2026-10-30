@@ -1,0 +1,13 @@
+// trace D54
+// expect: runs
+// output: 10x4
+fn box [$width: int[min: 1, max: 99], $height: int[min: 1, max: 99]] -> void:
+    labels.any_order [$width as width, $height as height];
+    std::print($width, "x", $height, newline);
+    return void;
+end fn box
+
+fn.main [] -> void:
+    box(height: 4, width: 10);
+    return void;
+end fn.main

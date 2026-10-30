@@ -1,0 +1,14 @@
+// trace D71
+// expect: runs
+// output: warm
+fn.main [] -> void:
+    var $celsius = 25;
+    if $celsius > 30:
+        std::print("hot", newline);
+    else if $celsius > 20:
+        std::print("warm", newline);
+    else:
+        std::print("cold", newline);
+    end if
+    return void;
+end fn.main

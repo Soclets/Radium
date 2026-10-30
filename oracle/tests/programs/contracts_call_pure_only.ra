@@ -1,0 +1,16 @@
+// trace D51
+// expect: refused at line 8
+fn limit [] -> int[min: 0, max: 9]:
+    return 5;
+end fn limit
+
+fn show [$n: int[min: 0, max: 9]] -> void:
+    requires $n at_most limit(); // here
+    std::print($n, newline);
+    return void;
+end fn show
+
+fn.main [] -> void:
+    show(1);
+    return void;
+end fn.main

@@ -1,0 +1,12 @@
+// trace D53
+// expect: check fails at line 4
+fn count_up [var $count: int[min: 0, max: 10]] -> void:
+    ensures $count equal old[$count] + 1; // here
+    $count = $count + 2;
+    return void;
+end fn count_up
+
+fn.main [] -> void:
+    count_up(5);
+    return void;
+end fn.main

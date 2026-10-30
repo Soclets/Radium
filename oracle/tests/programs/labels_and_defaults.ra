@@ -1,0 +1,17 @@
+// trace D54
+// expect: runs
+// output: 3 of 40
+// output: 3 of 20
+fn first_words [$count: int[min: 1, max: 80], $limit: int[min: 1, max: 80]] -> void:
+    labels [$limit as limit];
+    defaults [$limit = 40];
+    requires $count at_most $limit;
+    std::print($count, " of ", $limit, newline);
+    return void;
+end fn first_words
+
+fn.main [] -> void:
+    first_words(3);
+    first_words(3, limit: 20);
+    return void;
+end fn.main

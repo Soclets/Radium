@@ -1,0 +1,15 @@
+// trace D77
+// expect: runs
+// output: 11;12;13;21;
+fn.main [] -> void:
+    for rows $row in range[from: 1, to: 3]:
+        for $column in range[from: 1, to: 3]:
+            if $row equal 2 and $column equal 2:
+                break rows;
+            end if
+            std::print($row, $column, ";");
+        end for
+    end for rows
+    std::print(newline);
+    return void;
+end fn.main

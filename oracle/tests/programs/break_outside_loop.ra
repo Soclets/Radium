@@ -1,0 +1,6 @@
+// trace D77
+// expect: refused at line 4
+fn.main [] -> void:
+    break; // here
+    return void;
+end fn.main

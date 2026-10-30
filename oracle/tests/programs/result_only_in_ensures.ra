@@ -1,0 +1,11 @@
+// trace D53
+// expect: refused at line 4
+fn double [$n: int[min: 0, max: 9]] -> int[min: 0, max: 18]:
+    requires result > 0; // here
+    return $n x 2;
+end fn double
+
+fn.main [] -> void:
+    std::print(double(4), newline);
+    return void;
+end fn.main

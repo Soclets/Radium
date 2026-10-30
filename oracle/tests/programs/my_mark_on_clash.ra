@@ -1,0 +1,12 @@
+// trace D43
+// expect: runs
+// output: 12
+fn x [$a: int[min: 0, max: 9], $b: int[min: 0, max: 9]] -> void:
+    std::print($a, $b, newline);
+    return void;
+end fn x
+
+fn.main [] -> void:
+    my.x(1, 2);
+    return void;
+end fn.main

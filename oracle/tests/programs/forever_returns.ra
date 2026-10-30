@@ -1,0 +1,18 @@
+// trace D95
+// trace D76
+// expect: runs
+// output: 16
+fn first_power_above [$limit: int[min: 1, max: 1000]] -> int[min: 1, max: 2000]:
+    var $power: int[min: 1, max: 2000] = 1;
+    forever:
+        if $power > $limit:
+            return $power;
+        end if
+        $power = $power x 2;
+    end forever
+end fn first_power_above
+
+fn.main [] -> void:
+    std::print(first_power_above(10), newline);
+    return void;
+end fn.main

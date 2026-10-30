@@ -1,0 +1,9 @@
+// trace D37
+// expect: runs
+// output: -4 -3 -3
+// output: 3 3 4
+fn.main [] -> void:
+    std::print(-7 div.floor 2, " ", -7 div.trunc 2, " ", -7 div.ceil 2, newline);
+    std::print(7 div.floor 2, " ", 7 div.trunc 2, " ", 7 div.ceil 2, newline);
+    return void;
+end fn.main

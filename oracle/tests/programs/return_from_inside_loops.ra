@@ -1,0 +1,17 @@
+// trace D95
+// trace D76
+// expect: runs
+// output: 4
+fn first_square_above [$limit: int[min: 0, max: 50]] -> int[min: 0, max: 100]:
+    for $i in range[from: 0, to: 10]:
+        if $i x $i > $limit:
+            return $i;
+        end if
+    end for
+    return 0;
+end fn first_square_above
+
+fn.main [] -> void:
+    std::print(first_square_above(10), newline);
+    return void;
+end fn.main

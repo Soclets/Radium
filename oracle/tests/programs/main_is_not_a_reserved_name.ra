@@ -1,0 +1,12 @@
+// trace D101
+// expect: runs
+// output: 7
+fn main [$n: int[min: 0, max: 9]] -> void:
+    std::print($n, newline);
+    return void;
+end fn main
+
+fn.main [] -> void:
+    main(7);
+    return void;
+end fn.main

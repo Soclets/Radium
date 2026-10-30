@@ -1,0 +1,12 @@
+// trace D77
+// expect: runs
+// output: 1245
+fn.main [] -> void:
+    for $i in range[from: 1, to: 5]:
+        if $i not_equal 3:
+            std::print($i);
+        end if
+    end for
+    std::print(newline);
+    return void;
+end fn.main

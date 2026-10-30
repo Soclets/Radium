@@ -1,0 +1,10 @@
+// trace D14
+// trace D27
+// expect: runs
+// output: 255
+fn.main [] -> void:
+    var $byte: int[min: 0, max: 255] = 200;
+    $byte = $byte + 55;
+    std::print($byte, newline);
+    return void;
+end fn.main

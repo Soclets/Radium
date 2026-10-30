@@ -1,0 +1,5 @@
+// trace D101
+// expect: not decided at line 3
+fn.main [$count: int[min: 0, max: 9]] -> void: // here
+    return void;
+end fn.main

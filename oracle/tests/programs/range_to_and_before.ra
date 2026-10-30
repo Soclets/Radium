@@ -1,0 +1,26 @@
+// trace D73
+// trace D74
+// expect: runs
+// output: 12345
+// output: 1234
+// output: 0246810
+// output: 54321
+fn.main [] -> void:
+    for $i in range[from: 1, to: 5]:
+        std::print($i);
+    end for
+    std::print(newline);
+    for $i in range[from: 1, before: 5]:
+        std::print($i);
+    end for
+    std::print(newline);
+    for $i in range[from: 0, to: 10, step_by: 2]:
+        std::print($i);
+    end for
+    std::print(newline);
+    for $i in range[from: 5, to: 1, step_by: -1]:
+        std::print($i);
+    end for
+    std::print(newline);
+    return void;
+end fn.main

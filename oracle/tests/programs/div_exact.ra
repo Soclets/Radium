@@ -1,0 +1,7 @@
+// trace D37
+// expect: runs
+// output: 3
+fn.main [] -> void:
+    std::print(12 div 4, newline);
+    return void;
+end fn.main

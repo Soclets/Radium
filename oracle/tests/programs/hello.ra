@@ -1,0 +1,8 @@
+// trace D13
+// trace D29
+// expect: runs
+// output: hello
+fn.main [] -> void:
+    std::print("hello", newline);
+    return void;
+end fn.main

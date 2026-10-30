@@ -1,0 +1,7 @@
+// trace D72
+// expect: not built at line 4
+fn.main [] -> void:
+    match $s: // here
+    end match
+    return void;
+end fn.main

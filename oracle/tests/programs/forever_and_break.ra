@@ -1,0 +1,17 @@
+// trace D76
+// trace D77
+// expect: runs
+// output: 1 2 3
+fn.main [] -> void:
+    var $count = 0;
+    forever:
+        $count = $count + 1;
+        std::print($count);
+        if $count equal 3:
+            break;
+        end if
+        std::print(" ");
+    end forever
+    std::print(newline);
+    return void;
+end fn.main

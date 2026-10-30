@@ -1,0 +1,15 @@
+// trace D31
+// trace D53
+// expect: runs
+// output: 6
+fn count_up [var $count: int[min: 0, max: 10]] -> void:
+    ensures $count equal old[$count] + 1;
+    $count = $count + 1;
+    std::print($count, newline);
+    return void;
+end fn count_up
+
+fn.main [] -> void:
+    count_up(5);
+    return void;
+end fn.main

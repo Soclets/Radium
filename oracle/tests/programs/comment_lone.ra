@@ -1,0 +1,9 @@
+// trace D86
+// trace D87
+// expect: refused at line 7
+fn.main [] -> void:
+    var $x = 3;
+// the next line is a lone comment mark
+//
+    return void;
+end fn.main

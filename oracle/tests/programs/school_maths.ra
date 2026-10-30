@@ -1,0 +1,11 @@
+// trace D34
+// expect: runs
+// output: 14
+// output: 20
+// output: -6
+fn.main [] -> void:
+    std::print(2 + 3 x 4, newline);
+    std::print((2 + 3) x 4, newline);
+    std::print(-2 x 3, newline);
+    return void;
+end fn.main

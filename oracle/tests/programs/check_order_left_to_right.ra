@@ -1,0 +1,9 @@
+// trace D55
+// expect: check fails at line 6
+// output: before
+fn.main [] -> void:
+    std::print("before", newline);
+    var $tiny: int[min: 0, max: 1] = 2; // here
+    std::print("after", newline);
+    return void;
+end fn.main

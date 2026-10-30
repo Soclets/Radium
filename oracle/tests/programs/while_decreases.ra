@@ -1,0 +1,13 @@
+// trace D75
+// expect: runs
+// output: 3;2;1;
+fn.main [] -> void:
+    var $remaining = 3;
+    while $remaining > 0:
+        decreases $remaining;
+        std::print($remaining, ";");
+        $remaining = $remaining - 1;
+    end while
+    std::print(newline);
+    return void;
+end fn.main

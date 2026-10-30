@@ -1,0 +1,11 @@
+// trace D14
+// expect: check fails at line 9
+fn show [$percent: int[min: 0, max: 100]] -> void:
+    std::print($percent, newline);
+    return void;
+end fn show
+
+fn.main [] -> void:
+    show(101); // here
+    return void;
+end fn.main

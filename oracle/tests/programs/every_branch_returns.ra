@@ -1,0 +1,16 @@
+// trace D95
+// trace D71
+// expect: runs
+// output: 7 3
+fn larger [$a: int[min: 0, max: 9], $b: int[min: 0, max: 9]] -> int[min: 0, max: 9]:
+    if $a > $b:
+        return $a;
+    else:
+        return $b;
+    end if
+end fn larger
+
+fn.main [] -> void:
+    std::print(larger(7, 3), " ", larger(1, 3), newline);
+    return void;
+end fn.main

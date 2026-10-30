@@ -1,0 +1,15 @@
+// trace D86
+// trace D87
+// expect: runs
+// output: 3
+// a comment on its own line
+comment:
+    A comment block.
+
+    Blank lines inside belong to it, and so does // this.
+end comment
+fn.main [] -> void:
+    var $x = 3;   // a trailing comment
+    std::print($x, newline);
+    return void;
+end fn.main

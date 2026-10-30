@@ -1,0 +1,9 @@
+// trace D60
+// expect: refused at line 5
+fn.main [] -> void:
+    var $count = 3;
+    if $count: // here
+        std::print("yes", newline);
+    end if
+    return void;
+end fn.main

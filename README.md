@@ -18,6 +18,8 @@ There is no compiler yet. This repository holds the design:
   dots and underscores, brackets, marks, defaults.
 - [`implementation-rules/`](implementation-rules/) — the rules for the code that implements Radium: languages, naming,
   comments and tracing, code style, C++, the backend, proof trust, the oracle, branches and merging.
+- [`oracle/`](oracle/) — the decisions made runnable: a Rust interpreter that refuses what the compiler would refuse
+  and runs the rest with every check checked, plus small Radium test programs. It grows as decisions are made.
 - [`brand/`](brand/) — the logo: [`mark-amber.svg`](brand/mark-amber.svg) (main), [`mark-black.svg`](brand/mark-black.svg)
   and [`mark-white.svg`](brand/mark-white.svg), and the rounds of concepts that led to it in `brand/concepts/`.
 

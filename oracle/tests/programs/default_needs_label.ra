@@ -1,0 +1,12 @@
+// trace D54
+// expect: refused at line 4
+fn show [$count: int[min: 1, max: 80]] -> void:
+    defaults [$count = 40]; // here
+    std::print($count, newline);
+    return void;
+end fn show
+
+fn.main [] -> void:
+    show(1);
+    return void;
+end fn.main

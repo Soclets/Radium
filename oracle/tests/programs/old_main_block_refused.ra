@@ -1,0 +1,5 @@
+// trace D101
+// expect: refused at line 3
+main: // here
+    std::print("hi", newline);
+end main

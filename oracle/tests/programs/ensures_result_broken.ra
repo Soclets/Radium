@@ -1,0 +1,12 @@
+// trace D53
+// trace D95
+// expect: check fails at line 5
+fn double [$n: int[min: 0, max: 9]] -> int[min: 0, max: 18]:
+    ensures result equal $n x 2; // here
+    return $n + 2;
+end fn double
+
+fn.main [] -> void:
+    std::print(double(4), newline);
+    return void;
+end fn.main

@@ -1,0 +1,19 @@
+// trace D100
+// trace D102
+// expect: runs
+// output: -3
+// output: 4
+fn show_first_negative [$a: int[min: -9, max: 9], $b: int[min: -9, max: 9]] -> void:
+    if $a < 0:
+        std::print($a, newline);
+        return void;
+    end if
+    std::print($b, newline);
+    return void;
+end fn show_first_negative
+
+fn.main [] -> void:
+    show_first_negative(-3, 4);
+    show_first_negative(3, 4);
+    return void;
+end fn.main

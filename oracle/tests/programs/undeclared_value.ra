@@ -1,0 +1,6 @@
+// trace D31
+// expect: refused at line 4
+fn.main [] -> void:
+    std::print($nowhere, newline); // here
+    return void;
+end fn.main

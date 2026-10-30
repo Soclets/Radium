@@ -1,0 +1,6 @@
+// trace D37
+// expect: check fails at line 4
+fn.main [] -> void:
+    std::print(7 div 2, newline); // here
+    return void;
+end fn.main

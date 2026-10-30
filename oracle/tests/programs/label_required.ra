@@ -1,0 +1,12 @@
+// trace D54
+// expect: refused at line 10
+fn first_words [$count: int[min: 1, max: 80], $limit: int[min: 1, max: 80]] -> void:
+    labels [$limit as limit];
+    std::print($count, " of ", $limit, newline);
+    return void;
+end fn first_words
+
+fn.main [] -> void:
+    first_words(3, 20); // here
+    return void;
+end fn.main

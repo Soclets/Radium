@@ -1,0 +1,12 @@
+// trace D40
+// expect: runs
+// output: safe
+fn.main [] -> void:
+    var $zero = 0;
+    if $zero not_equal 0 and 10 div $zero equal 1:
+        std::print("unsafe", newline);
+    else:
+        std::print("safe", newline);
+    end if
+    return void;
+end fn.main
