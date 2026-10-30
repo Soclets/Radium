@@ -6,7 +6,8 @@ never renumbered. A changed decision gets a new entry that says which one it rep
 
 Identity (repo description, `Soclets/Radium`): *"Radium: slowly kills you via the steep learning curve, and slow
 compile times. Glow in the dark via the clear syntax. It also has a safety radius."* A steep learning curve and slow
-compiles are accepted, never an argument against an option. Clear syntax is required.
+compiles are accepted, never an argument against an option. Clear syntax is required. Final products should be fast
+(D81).
 
 Licences (D65): Apache-2.0 WITH LLVM-exception for code; CC BY 4.0 for the Markdown text.
 
@@ -1215,6 +1216,164 @@ Colours: **warm amber is the main colour** — `#ff9a3c` on `#1a0f05` (owner, fr
 glow and Cherenkov blue). The mono versions (white on black, black on white) are kept for single-colour use. File:
 `brand/mark-amber.svg`.
 
+Proposed by design claude (CyborgPL's arrangement), owner: "yes" (extends D65): **the logo files in `brand/` are
+under CC BY 4.0**, credited `Radium logo: https://github.com/Soclets/Radium`. **The name "Radium" and the logo are
+trademarks (not registered)**: anyone may use them, anywhere, but not in a way that pretends to be the project or
+speaks for it. Neither licence grants trademark rights.
+
+## D80 — Ownership words: `give`, `copy`, `lend`, `lend.mut` (2026-10-30)
+
+Cold-tested with the owner (4 of 4 read correctly: whether `$buffer` can be used afterwards, and whether the callee
+can change it); owner: "yes". CyborgPL's words, from the owner's side (D5):
+
+```
+take_reading(give $buffer);       // ownership moves; $buffer can't be used afterwards
+take_reading(copy $buffer);       // a separate copy is handed over; yours is untouched
+take_reading(lend $buffer);       // temporary read-only access; you keep it
+take_reading(lend.mut $buffer);   // temporary access that may change it; you keep it
+```
+
+Words, not symbols (D34); `lend.mut` narrows `lend` (D26). Lifetimes name their source with `lend from $text`
+(D49). Rust's receiver-side `move` / `clone` / `borrow` weren't tested once these scored 4 of 4. Linear values (D5)
+are open. (Capitalised, and linear values settled, by D84.)
+
+## D81 — Final products should be fast (2026-10-30)
+
+Owner's own goal: "final product speed is also a goal for Radium. Like, what if a car brakes in an emergency?" (Not a
+claim that Radium will be used in cars; D1 still holds.) Only the final build (mode 3, D9) is meant to be fast; modes 1
+and 2 still trade speed for checks. Speed comes after correctness, never instead of it.
+
+What already serves it: the final build carries no runtime checks because everything is proven (D9); proven facts are
+handed to LLVM (D17); stack use is proven and the heap is budgeted, with no garbage collector (D8).
+
+Open: whether "fast" means fast on average, a proven worst-case time (a deadline), or both (settled by D82); and
+whether D17's conservative final pipeline (risky passes only with evidence) still fits (settled by D83).
+
+## D82 — Fast means both: average speed and proven deadlines (2026-10-30)
+
+Proposed by design claude, owner: "yes".
+
+- **Average speed:** the final build is optimized for speed everywhere.
+- **Deadlines:** a writer may mark a function with a deadline, the longest it may ever take (e.g. 2 ms). Geiger must
+  prove the worst case fits, or the build is refused, like any unproven check. Termination (D7) and stack (D8) are
+  already proven; this extends the same idea to time.
+- Worst-case time depends on the exact chip (caches, pipeline), so deadlines can only be proven on a target that
+  declares a **timing model**, the way a target declares its heap budget (D8). On a target without one, a deadline
+  mark is a compile error, never silently ignored.
+- The proof is about the final machine code, after optimization, since that is what runs.
+
+Code without a deadline mark only has to be fast. The spelling of the mark is for the syntax phase.
+
+## D83 — Risky optimizer passes, checked every run (2026-10-30; replaces D17's point 4)
+
+Proposed by design claude, owner: "yes". Follows from D81.
+
+D17's point 4 kept the final build to a conservative list of LLVM passes, with risky ones (e.g. InstCombine, the loop
+vectorizer) only with evidence. Now the final build **also runs the risky passes**, and every run is checked:
+
+1. The optimizer produces the fast version.
+2. A translation validator (Alive2, or our own) proves the fast version does exactly what the unoptimized version
+   does, for this program.
+3. Where it proves that, the fast version is used.
+4. Where it can't, for some function, that function falls back to the conservative pipeline's output, and the build
+   reports which functions fell back and why.
+
+No optimizer is trusted; slower compiles are the accepted cost. The conservative pipeline stays as the fallback, and
+stays frozen as part of the build's identity. D17's other safeguards are unchanged.
+
+## D84 — Ownership words are capitalised; linear values are `must_Give` (2026-10-30; amends D80)
+
+Owner's design, after seeing both versions side by side ("a lot" better, "yes"). Design claude had recommended the
+lowercase `must_use`, which passed a cold test 4 of 4; `linear`, `once` and `must_finish` failed.
+
+**The ownership words start with a capital**, so every hand-off stands out from the code around it. Lowercase
+spellings are refused (one spelling each, D33). A narrowing after them stays lowercase:
+
+```
+write(Lend.mut $f, $text);
+var $copy_of_text = Copy $text;
+archive(Give $copy_of_text);
+close(Give $f);
+```
+
+The same word appears in a parameter that takes ownership: `fn close [$f: Give open_file]:` (parameter syntax
+otherwise a placeholder).
+
+**Linear values (D5)**: a type narrowed with **`must_Give`** must be handed off with `Give` exactly once before it goes
+out of scope: lending doesn't count, forgetting or giving twice is a compile error (not a warning, unlike Rust's
+`#[must_use]`). Giving it to a function passes the duty along: the receiver must `Give` it in turn. Checked entirely
+at compile time, so it costs nothing at run time (D81).
+
+```
+struct.must_Give open_file:
+    handle: int[min: 0, max: 65_535];
+end struct.must_Give open_file
+```
+
+It works on any type that narrows, e.g. `union.tagged.must_Give`. The capital is what makes `must_Give` read as "must
+do a `Give`" rather than "the file must give something". This is the first place letter case carries meaning in
+Radium: only these words, and names that contain them.
+
+## D85 — Comments: `#` and a space (2026-10-30; mark replaced by D87: `//`)
+
+Owner's design. A comment starts with **`#` followed by a space** and runs to the end of the line, on its own line or
+after code. `#` with no space after it is refused:
+
+```
+# a comment                      ✅
+var $x = 3;   # also a comment   ✅
+#not a comment                   ❌ refused
+```
+
+Trace tags in Radium code, e.g. the oracle's tests (D48), are written `# trace D<n>`. The `//` in earlier code samples
+is a placeholder. (The implementation's own comments, D18, follow Rust and C++ and are unaffected.)
+
+## D86 — Comment blocks: `comment:` … `end comment` (2026-10-30; `#` read as `//` since D87)
+
+Owner's design ("just plain `comment:` honestly"), after design claude pointed out that a `#[ … ]` block would be the
+only multi-line `[ ]`, the only `[ ]` holding prose, and could be closed early by a `]` in the text. A comment that
+spans lines is a block, like everything else that spans lines (D13):
+
+```
+comment:
+    Reads the sensor and returns the average of the last 10 readings.
+
+    Fails with too_hot above 125 °C, see int[min: -40, max: 125].
+end comment
+```
+
+Blank lines inside are part of the comment. One-line comments stay `# ` (D85).
+
+Proposed by design claude, owner: "yes": **a lone `#` (an empty comment line) is refused.** `#` is always followed by a
+space and text; a comment that needs paragraph breaks is a `comment:` block, so there is one way to write it.
+
+## D87 — One-line comments are `//` and a space; `#` is kept free (2026-10-30; replaces D85's mark)
+
+Owner: a one-line or trailing comment should use a mark "we would genuinely not use", so `#` stays free "jic" it fits
+something else. Design claude proposed `//`, owner: "yes". Radium divides with the word `div` (D34, D37), so `/` has no
+other job and `//` can never collide; most programmers already read it as a comment. (`--` was passed over: it clashes
+with minus. `%` and `;;` were passed over too.)
+
+D85's rules carry over with the new mark: `//` is followed by a space and text, on its own line or after code; `//text`
+and a lone `//` are refused; paragraph breaks go in a `comment:` block (D86).
+
+```
+// a comment                      ✅
+var $x = 3;   // also a comment   ✅
+//not a comment                   ❌ refused
+```
+
+Trace tags in Radium code are `// trace D<n>`. **`#` has no meaning for now**, so any `#` outside a string or comment is
+refused until a decision gives it one.
+
+## D88 — A folder for implementation rules (2026-10-30)
+
+Owner: "Move implementations rule into a specific folder." **`implementation-rules/`** collects the rules for the code
+that implements Radium, one file each, citing the decisions they came from: languages (D15, D16, D46), naming (D19),
+comments and tracing (D18), code style (D20), C++ (D44), backend (D17, D83), proof trust (D12, D16), the oracle (D16,
+D48), branches and merging (D45). As with `design-rules/` (D62), DECISIONS.md stays the record; when a rule changes,
+it gets a new entry here and the rule's file is updated.
+
 ---
 
 ## Open
@@ -1222,8 +1381,8 @@ glow and Cherenkov blue). The mono versions (white on black, black on white) are
 
 - What "more diabolical" covers beyond D6–D12 (e.g. timing and side channels).
 - **Syntax phase** (owner: spellings get designed together, later). Collected so far: the contract keywords
-  (`requires`, `ensures`, `invariant`, `assert`, `decreases`, ghost code, lemmas — D4); the ownership words (D5);
+  (`requires`, `ensures`, `invariant`, `assert`, `decreases`, ghost code, lemmas — D4); the ownership words (D5; done: D80, D84);
   `shield` and `reason` (D6); `forever` (D7); failure sets, failure contracts, handlers (D11); integer and float ranges
   (D14, D24); the two import kinds (D23); the inexact-literal mark and its directions (D25); where contracts sit
   relative to the block's `:` (D13); the evaluate-both narrowing of `and`/`or` (D40); the own-function mark
-  (`my.`, D43).
+  (`my.`, D43); the deadline mark (D82); comments (done: D86, D87); a use for `#`, if any (D87).

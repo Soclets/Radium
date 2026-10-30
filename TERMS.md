@@ -27,6 +27,10 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | containment wall | `ContainmentWall` | The rule that raw pointers and unchecked borrows can't leave a shield | D6 | |
 | forever loop | `ForeverLoop` | The only loop allowed to run without end; each trip must end | D7 | |
 | heap budget | `HeapBudget` | The heap size a target declares | D8 | |
+| deadline | `Deadline` | The longest a marked function may ever take; Geiger proves the worst case fits | D82 | time limit, WCET (as a writer-facing word) |
+| timing model | `TimingModel` | What a target declares about its chip's timing, needed to prove deadlines | D82 | |
+| translation validation | `TranslationValidation` | Proving an optimized function does exactly what the unoptimized one did, for this program | D17, D83 | |
+| fallback | `Fallback` | Using the conservative pipeline's output for a function whose optimized version couldn't be validated | D83 | |
 | build mode | `BuildMode` | Mode 1, mode 2 or final | D9 | |
 | final build | `BuildMode::Final` | Mode 3: everything proven, no runtime checks | D9 | |
 | failure | `Failure` | A declared, handled way a function can end early | D11 | exception, panic |
@@ -52,6 +56,11 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | map | `std::map.sorted` / `.inserted` / `.unordered` | Key–value lookup in `std`; the kind names its order | D66, D70 | dict, hash map |
 | position | `pos:` | An index counting from 1: `pos: 1` is the first item | D64 | index |
 | offset | `offset:` | An index counting from 0: `offset: 0` is the start | D64 | index |
+| give | `Give` | Hand over ownership; the giver can't use the value afterwards | D80, D84 | move, `give` (lowercase) |
+| copy | `Copy` | Hand over a separate copy; the original is untouched | D80, D84 | clone, `copy` (lowercase) |
+| lend | `Lend` | Temporary read-only access; the owner keeps the value | D80, D84 | borrow, `&`, `lend` (lowercase) |
+| lend.mut | `Lend.mut` | Temporary access that may change the value; the owner keeps it | D80, D84 | mutable borrow, `&mut`, `lend.mut` (lowercase) |
+| linear value | `must_Give` | A value that must be handed off with `Give` exactly once before it goes out of scope | D5, D84 | `linear`, `must_use`, `once`, `must_finish` |
 | break | `break` | Stops the loop it is in | D77 | `stop`, `exit`, `leave`, `last` |
 | — | — | (No skip-this-trip statement: write the condition around the work) | D77 | `continue`, `skip`, `next` (as a statement) |
 | range | `range[from:, to:, before:, step_by:]` | A sequence of numbers a loop goes through (`for $i in range[…]`): `to:` includes the end, `before:` stops before it, `step_by:` is the step (default 1, negative counts down) | D73, D74 | `until:`, `by:`, `step:`, `steps:`, `every:`; "loop bounds" |
@@ -59,6 +68,8 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | requirement | — | What a generic placeholder needs (`[?T: ordered]`: `?T` requires `ordered`) | D69, D74 | bound, trait bound |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
 | own-name mark | — | `my.`, needed only when the writer's function or type name clashes with a built-in (`my.reading`) | D43 | own-function mark |
+| comment | `// ` | Text for readers, from `//` and a space to the end of the line | D85, D87 | `#` (as a comment mark) |
+| comment block | `comment:` … `end comment` | A comment that spans lines; blank lines inside belong to it | D86 | `#[ … ]`, `/* */` |
 | section marker | — | `// section a.b:` … `// end section a.b` | D18 | |
 | trace tag | — | `// trace D<n>` | D18 | |
 

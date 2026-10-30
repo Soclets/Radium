@@ -16,6 +16,8 @@ There is no compiler yet. This repository holds the design:
 - [`TERMS.md`](TERMS.md) — one name per concept, and the allowed abbreviations.
 - [`design-rules/`](design-rules/) — the general rules the design is judged by: clear syntax, choosing words,
   dots and underscores, brackets, marks, defaults.
+- [`implementation-rules/`](implementation-rules/) — the rules for the code that implements Radium: languages, naming,
+  comments and tracing, code style, C++, the backend, proof trust, the oracle, branches and merging.
 - [`brand/`](brand/) — the logo: [`mark-amber.svg`](brand/mark-amber.svg) (main), [`mark-black.svg`](brand/mark-black.svg)
   and [`mark-white.svg`](brand/mark-white.svg), and the rounds of concepts that led to it in `brand/concepts/`.
 
@@ -29,3 +31,7 @@ There is no compiler yet. This repository holds the design:
   `Radium GitHub repo text: https://github.com/Soclets/Radium`
   As the licence asks, also say they are under CC BY 4.0, and whether you changed them. Code and code comments stay
   under `LICENSE`.
+- **The logo** (the files in [`brand/`](brand/)) is under CC BY 4.0 too. Credit it as:
+  `Radium logo: https://github.com/Soclets/Radium`
+- **The name "Radium" and the logo are trademarks** (not registered). Use them anywhere you like, but not in a way
+  that pretends to be this project or to speak for it. Neither licence grants trademark rights.
