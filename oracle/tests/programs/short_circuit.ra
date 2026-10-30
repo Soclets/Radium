@@ -2,7 +2,7 @@
 // expect: runs
 // output: safe
 fn.main [] -> void:
-    var $zero = 0;
+    var $zero: infer = 0;
     if $zero not_equal 0 and 10 div $zero equal 1:
         std::print("unsafe", newline);
     else:

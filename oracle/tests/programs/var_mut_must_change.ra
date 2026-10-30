@@ -1,7 +1,7 @@
 // trace D30
 // expect: refused at line 4
 fn.main [] -> void:
-    var.mut $c = 0; // here
+    var.mut $c: infer = 0; // here
     std::print($c, newline);
     return void;
 end fn.main

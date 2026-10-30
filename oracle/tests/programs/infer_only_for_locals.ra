@@ -1,0 +1,11 @@
+// trace D108
+// expect: refused at line 3
+fn show [$n: infer] -> void: // here
+    std::print($n, newline);
+    return void;
+end fn show
+
+fn.main [] -> void:
+    show(1);
+    return void;
+end fn.main

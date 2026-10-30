@@ -6,7 +6,7 @@ fn show [$count: int[min: 1, max: 80]] -> void:
 end fn show
 
 fn.main [] -> void:
-    var $n = 3;
+    var $n: infer = 3;
     show(give $n); // here
     return void;
 end fn.main

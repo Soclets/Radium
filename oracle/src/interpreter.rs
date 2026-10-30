@@ -8,6 +8,8 @@ use crate::ast::{
     Bounds, Call, CallTarget, Expression, ExpressionKind, Function, LoopRange, Operator, Program,
     RangeEnd, RemainderRule, Rounding, Statement, StatementKind, TypeSpec,
 };
+use num_bigint::{BigInt, Sign};
+
 use crate::binding::{Binding, bind_arguments};
 use crate::rules::range_can_end;
 
@@ -51,13 +53,14 @@ pub(crate) fn run(program: &Program) -> (Result<(), Stop>, String) {
     (result, machine.output)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum Value {
-    Integer(i128),
+    /// Any size, so the oracle never runs out of digits before Radium does (D104).
+    Integer(BigInt),
     Bool(bool),
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 struct Slot {
     value: Value,
     bounds: Option<Bounds>,
@@ -159,8 +162,8 @@ impl<'program> Machine<'program> {
                 ..
             } => {
                 let value = self.evaluate(value, frame)?;
-                let bounds = type_spec.and_then(TypeSpec::bounds);
-                check_bounds(line, name, value, bounds)?;
+                let bounds = type_spec.as_ref().and_then(TypeSpec::bounds).cloned();
+                check_bounds(line, name, &value, bounds.as_ref())?;
                 frame.declare(name, Slot { value, bounds });
                 Ok(Flow::Normal)
             }
@@ -169,7 +172,7 @@ impl<'program> Machine<'program> {
                 let slot = frame
                     .lookup_mut(name)
                     .ok_or_else(|| fault(format!("`${name}` has no slot")))?;
-                check_bounds(line, name, value, slot.bounds)?;
+                check_bounds(line, name, &value, slot.bounds.as_ref())?;
                 slot.value = value;
                 Ok(Flow::Normal)
             }
@@ -235,9 +238,9 @@ impl<'program> Machine<'program> {
         };
         let step = match &range.step_by {
             Some(step) => self.integer(step, frame)?,
-            None => 1,
+            None => BigInt::from(1),
         };
-        if !range_can_end(from, end, step) {
+        if !range_can_end(&from, &end, &step) {
             return Err(Stop::CheckFails {
                 line,
                 message: "this loop's step can never reach its end (D74)".to_owned(),
@@ -245,7 +248,7 @@ impl<'program> Machine<'program> {
         }
         let mut current = from;
         loop {
-            let inside = match (step > 0, inclusive) {
+            let inside = match (step.sign() == Sign::Plus, inclusive) {
                 (true, true) => current <= end,
                 (true, false) => current < end,
                 (false, true) => current >= end,
@@ -258,7 +261,7 @@ impl<'program> Machine<'program> {
             frame.scopes.push(HashMap::from([(
                 variable.to_owned(),
                 Slot {
-                    value: Value::Integer(current),
+                    value: Value::Integer(current.clone()),
                     bounds: None,
                 },
             )]));
@@ -267,10 +270,7 @@ impl<'program> Machine<'program> {
             if let Some(flow) = after_trip(flow?, loop_name) {
                 return Ok(flow);
             }
-            let Some(next) = current.checked_add(step) else {
-                return Ok(Flow::Normal);
-            };
-            current = next;
+            current += &step;
         }
     }
 
@@ -282,7 +282,7 @@ impl<'program> Machine<'program> {
         body: &'program [Statement],
         frame: &mut Frame,
     ) -> Result<Flow, Stop> {
-        let mut previous: Option<i128> = None;
+        let mut previous: Option<BigInt> = None;
         loop {
             self.tick(line)?;
             if !self.truth(condition, frame)? {
@@ -291,14 +291,14 @@ impl<'program> Machine<'program> {
             if let Some(measure) = decreases {
                 // trace D75: the measure shrinks every trip and never goes below zero.
                 let value = self.integer(measure, frame)?;
-                if value < 0 {
+                if value.sign() == Sign::Minus {
                     return Err(Stop::CheckFails {
                         line: measure.line,
                         message: format!("`decreases` went below zero, to {value} (D75)"),
                     });
                 }
-                if let Some(before) = previous
-                    && value >= before
+                if let Some(before) = &previous
+                    && value >= *before
                 {
                     return Err(Stop::CheckFails {
                         line: measure.line,
@@ -338,8 +338,9 @@ impl<'program> Machine<'program> {
         };
         for (parameter, binding) in function.parameters.iter().zip(bindings) {
             let value = match binding {
-                Binding::Argument(index) => *argument_values
+                Binding::Argument(index) => argument_values
                     .get(index)
+                    .cloned()
                     .ok_or_else(|| fault("an argument went missing"))?,
                 Binding::Default(index) => {
                     let default = function
@@ -352,17 +353,17 @@ impl<'program> Machine<'program> {
             check_bounds(
                 call.line,
                 &parameter.name,
-                value,
+                &value,
                 parameter.type_spec.bounds(),
             )?;
+            callee.old.insert(parameter.name.clone(), value.clone());
             callee.declare(
                 &parameter.name,
                 Slot {
                     value,
-                    bounds: parameter.type_spec.bounds(),
+                    bounds: parameter.type_spec.bounds().cloned(),
                 },
             );
-            callee.old.insert(parameter.name.clone(), value);
         }
         self.invoke(function, callee, call.line)
     }
@@ -395,11 +396,11 @@ impl<'program> Machine<'program> {
         }
         let flow = self.block(&function.body, &mut callee);
         self.depth = self.depth.saturating_sub(1);
-        match (flow?, function.result) {
+        match (flow?, function.result.as_ref()) {
             (Flow::Return(Some(value), line), Some(result)) => {
                 // trace D95: the value given back is checked against the result type's bounds (D14).
-                if let (Value::Integer(number), Some(bounds)) = (value, result.bounds())
-                    && (number < bounds.min || number > bounds.max)
+                if let (Value::Integer(number), Some(bounds)) = (&value, result.bounds())
+                    && (*number < bounds.min || *number > bounds.max)
                 {
                     return Err(Stop::CheckFails {
                         line,
@@ -456,7 +457,7 @@ impl<'program> Machine<'program> {
         &mut self,
         expression: &'program Expression,
         frame: &mut Frame,
-    ) -> Result<i128, Stop> {
+    ) -> Result<BigInt, Stop> {
         match self.evaluate(expression, frame)? {
             Value::Integer(number) => Ok(number),
             Value::Bool(_) => Err(fault("a `bool` where the checker promised an integer")),
@@ -470,33 +471,28 @@ impl<'program> Machine<'program> {
     ) -> Result<Value, Stop> {
         let line = expression.line;
         match &expression.kind {
-            ExpressionKind::Integer(number) => Ok(Value::Integer(*number)),
+            ExpressionKind::Integer(number) => Ok(Value::Integer(number.clone())),
             ExpressionKind::Bool(truth) => Ok(Value::Bool(*truth)),
             ExpressionKind::Text(_) | ExpressionKind::Newline => {
                 Err(fault("text outside `std::print`"))
             }
             ExpressionKind::Value(name) => frame
                 .lookup(name)
-                .map(|slot| slot.value)
+                .map(|slot| slot.value.clone())
                 .ok_or_else(|| fault(format!("`${name}` has no slot"))),
             ExpressionKind::Old(name) => frame
                 .old
                 .get(name)
-                .copied()
+                .cloned()
                 .ok_or_else(|| fault(format!("`old[${name}]` has no value"))),
             ExpressionKind::Result => frame
                 .result
+                .clone()
                 .ok_or_else(|| fault("`result` before anything was given back")),
             ExpressionKind::Call(call) => self
                 .call(call, frame)?
                 .ok_or_else(|| fault("a call used as a value gave nothing back")),
-            ExpressionKind::Negate(inner) => {
-                let number = self.integer(inner, frame)?;
-                number
-                    .checked_neg()
-                    .map(Value::Integer)
-                    .ok_or_else(|| beyond(line))
-            }
+            ExpressionKind::Negate(inner) => Ok(Value::Integer(-self.integer(inner, frame)?)),
             ExpressionKind::Not(inner) => Ok(Value::Bool(!self.truth(inner, frame)?)),
             ExpressionKind::Binary {
                 operator,
@@ -517,7 +513,7 @@ impl<'program> Machine<'program> {
                 _ => {
                     let left = self.integer(left, frame)?;
                     let right = self.integer(right, frame)?;
-                    arithmetic(line, *operator, left, right)
+                    arithmetic(line, *operator, &left, &right)
                 }
             },
         }
@@ -543,9 +539,14 @@ fn finish_loop(target: Option<String>, loop_name: Option<&String>) -> Flow {
     }
 }
 
-fn check_bounds(line: usize, name: &str, value: Value, bounds: Option<Bounds>) -> Result<(), Stop> {
+fn check_bounds(
+    line: usize,
+    name: &str,
+    value: &Value,
+    bounds: Option<&Bounds>,
+) -> Result<(), Stop> {
     if let (Value::Integer(number), Some(bounds)) = (value, bounds)
-        && (number < bounds.min || number > bounds.max)
+        && (*number < bounds.min || *number > bounds.max)
     {
         return Err(Stop::CheckFails {
             line,
@@ -558,12 +559,16 @@ fn check_bounds(line: usize, name: &str, value: Value, bounds: Option<Bounds>) -
     Ok(())
 }
 
-fn arithmetic(line: usize, operator: Operator, left: i128, right: i128) -> Result<Value, Stop> {
-    let number = |result: Option<i128>| result.map(Value::Integer).ok_or_else(|| beyond(line));
+fn arithmetic(
+    line: usize,
+    operator: Operator,
+    left: &BigInt,
+    right: &BigInt,
+) -> Result<Value, Stop> {
     match operator {
-        Operator::Add => number(left.checked_add(right)),
-        Operator::Subtract => number(left.checked_sub(right)),
-        Operator::Multiply => number(left.checked_mul(right)),
+        Operator::Add => Ok(Value::Integer(left + right)),
+        Operator::Subtract => Ok(Value::Integer(left - right)),
+        Operator::Multiply => Ok(Value::Integer(left * right)),
         Operator::Divide(rounding) => divide(line, rounding, left, right).map(Value::Integer),
         Operator::Remainder(rule) => remainder(line, rule, left, right).map(Value::Integer),
         Operator::Less => Ok(Value::Bool(left < right)),
@@ -576,67 +581,69 @@ fn arithmetic(line: usize, operator: Operator, left: i128, right: i128) -> Resul
     }
 }
 
-fn divide(line: usize, rounding: Rounding, left: i128, right: i128) -> Result<i128, Stop> {
-    if right == 0 {
+/// `/` and `%` on big integers truncate toward zero, and the rest takes the sign of `left`.
+fn divide(line: usize, rounding: Rounding, left: &BigInt, right: &BigInt) -> Result<BigInt, Stop> {
+    if right.sign() == Sign::NoSign {
         return Err(Stop::CheckFails {
             line,
             message: "division by zero (D37)".to_owned(),
         });
     }
-    let quotient = left.checked_div(right).ok_or_else(|| beyond(line))?;
-    let rest = left.checked_rem(right).ok_or_else(|| beyond(line))?;
-    let signs_differ = (rest < 0) != (right < 0);
+    let quotient = left / right;
+    let rest = left % right;
+    let has_rest = rest.sign() != Sign::NoSign;
+    let signs_differ = (rest.sign() == Sign::Minus) != (right.sign() == Sign::Minus);
     match rounding {
-        Rounding::Exact if rest == 0 => Ok(quotient),
+        Rounding::Exact if !has_rest => Ok(quotient),
         Rounding::Exact => Err(Stop::CheckFails {
             line,
             message: format!(
                 "`div` is exact, but {left} div {right} leaves a remainder; write `div.floor`, `div.trunc` or `div.ceil` (D37)"
             ),
         }),
-        Rounding::Floor if rest != 0 && signs_differ => {
-            quotient.checked_sub(1).ok_or_else(|| beyond(line))
-        }
-        Rounding::Ceil if rest != 0 && !signs_differ => {
-            quotient.checked_add(1).ok_or_else(|| beyond(line))
-        }
+        Rounding::Floor if has_rest && signs_differ => Ok(quotient - 1),
+        Rounding::Ceil if has_rest && !signs_differ => Ok(quotient + 1),
         Rounding::Trunc | Rounding::Floor | Rounding::Ceil => Ok(quotient),
     }
 }
 
-fn remainder(line: usize, rule: RemainderRule, left: i128, right: i128) -> Result<i128, Stop> {
-    if right == 0 {
+fn remainder(
+    line: usize,
+    rule: RemainderRule,
+    left: &BigInt,
+    right: &BigInt,
+) -> Result<BigInt, Stop> {
+    if right.sign() == Sign::NoSign {
         return Err(Stop::CheckFails {
             line,
             message: "remainder of a division by zero (D38)".to_owned(),
         });
     }
+    let rest = left % right;
     match rule {
-        RemainderRule::NonNegative if left < 0 || right < 0 => Err(Stop::CheckFails {
-            line,
-            message: format!(
-                "bare `mod` needs both numbers non-negative, but this is {left} mod {right}; write `mod.floor`, `mod.trunc` or `mod.euclid` (D38)"
-            ),
+        RemainderRule::NonNegative if left.sign() == Sign::Minus || right.sign() == Sign::Minus => {
+            Err(Stop::CheckFails {
+                line,
+                message: format!(
+                    "bare `mod` needs both numbers non-negative, but this is {left} mod {right}; write `mod.floor`, `mod.trunc` or `mod.euclid` (D38)"
+                ),
+            })
+        }
+        RemainderRule::Floor
+            if rest.sign() != Sign::NoSign
+                && (rest.sign() == Sign::Minus) != (right.sign() == Sign::Minus) =>
+        {
+            Ok(rest + right)
+        }
+        RemainderRule::Euclid if rest.sign() == Sign::Minus => Ok(if right.sign() == Sign::Minus {
+            rest - right
+        } else {
+            rest + right
         }),
-        RemainderRule::NonNegative | RemainderRule::Trunc => {
-            left.checked_rem(right).ok_or_else(|| beyond(line))
-        }
-        RemainderRule::Floor => {
-            let rest = left.checked_rem(right).ok_or_else(|| beyond(line))?;
-            if rest != 0 && (rest < 0) != (right < 0) {
-                rest.checked_add(right).ok_or_else(|| beyond(line))
-            } else {
-                Ok(rest)
-            }
-        }
-        RemainderRule::Euclid => left.checked_rem_euclid(right).ok_or_else(|| beyond(line)),
-    }
-}
-
-fn beyond(line: usize) -> Stop {
-    Stop::GaveUp {
-        line,
-        message: "a number went beyond the oracle's 128 bits".to_owned(),
+        RemainderRule::NonNegative
+        | RemainderRule::Trunc
+        | RemainderRule::Floor
+        | RemainderRule::Euclid => Ok(rest),
     }
 }
 

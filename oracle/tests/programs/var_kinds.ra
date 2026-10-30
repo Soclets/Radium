@@ -3,10 +3,10 @@
 // expect: runs
 // output: 1 2 3 4
 fn.main [] -> void:
-    var $a = 1;
-    var.immut $b = 2;
-    var.mut $c = 0;
-    const $d = 4;
+    var $a: infer = 1;
+    var.immut $b: infer = 2;
+    var.mut $c: infer = 0;
+    const $d: infer = 4;
     $c = 3;
     std::print($a, " ", $b, " ", $c, " ", $d, newline);
     return void;

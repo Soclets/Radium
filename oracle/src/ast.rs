@@ -1,6 +1,8 @@
 // section oracle.ast:
 //! The program's tree, as the parser builds it.
 
+use num_bigint::BigInt;
+
 /// A whole program: its functions and its `fn.main` (D101).
 #[derive(Debug)]
 pub(crate) struct Program {
@@ -72,7 +74,7 @@ pub(crate) struct ParameterDefault {
 }
 
 /// The types of the first slice.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeSpec {
     /// `int[min: …, max: …]` (D14, D27).
     Integer(Bounds),
@@ -82,7 +84,7 @@ pub(crate) enum TypeSpec {
 
 impl TypeSpec {
     /// Which kind of value the type holds.
-    pub(crate) fn kind(self) -> ValueKind {
+    pub(crate) fn kind(&self) -> ValueKind {
         match self {
             Self::Integer(_) => ValueKind::Integer,
             Self::Bool => ValueKind::Bool,
@@ -90,7 +92,7 @@ impl TypeSpec {
     }
 
     /// The integer bounds, for an integer type.
-    pub(crate) fn bounds(self) -> Option<Bounds> {
+    pub(crate) fn bounds(&self) -> Option<&Bounds> {
         match self {
             Self::Integer(bounds) => Some(bounds),
             Self::Bool => None,
@@ -98,11 +100,11 @@ impl TypeSpec {
     }
 }
 
-/// An integer type's lower and upper bounds, both included (D14, D74).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// An integer type's lower and upper bounds, both included (D14, D74). Any size: integers have no width cap (D104).
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Bounds {
-    pub(crate) min: i128,
-    pub(crate) max: i128,
+    pub(crate) min: BigInt,
+    pub(crate) max: BigInt,
 }
 
 /// The kinds of value in the first slice.
@@ -132,7 +134,7 @@ pub(crate) struct Statement {
 /// The statements and blocks of the first slice.
 #[derive(Debug)]
 pub(crate) enum StatementKind {
-    /// `var $x: type = value;` and its narrowings, or `const` (D30, D41).
+    /// `var $x: type = value;` and its narrowings, or `const` (D30, D41); `type_spec` is `None` for `: infer` (D108).
     Declare {
         holder: Holder,
         name: String,
@@ -240,7 +242,7 @@ pub(crate) struct Expression {
 /// The expressions of the first slice.
 #[derive(Debug)]
 pub(crate) enum ExpressionKind {
-    Integer(i128),
+    Integer(BigInt),
     Bool(bool),
     /// Text, allowed only as a `std::print` item while text types are open.
     Text(String),

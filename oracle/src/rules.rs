@@ -1,6 +1,8 @@
 // section oracle.rules:
 //! Rules the checker and the interpreter share, so both read a decision the same way.
 
+use num_bigint::{BigInt, Sign};
+
 /// Words Radium itself uses. A writer's function with one of these names is called `my.name` (D43).
 pub(crate) const RADIUM_WORDS: &[&str] = &[
     "and",
@@ -55,12 +57,12 @@ pub(crate) fn is_radium_word(name: &str) -> bool {
 
 /// Whether a loop from `from` towards `end` in steps of `step` can ever reach its end (D74). A step of zero never
 /// moves; a step pointing away from the end never arrives.
-pub(crate) fn range_can_end(from: i128, end: i128, step: i128) -> bool {
+pub(crate) fn range_can_end(from: &BigInt, end: &BigInt, step: &BigInt) -> bool {
     // trace D74: `from: 5, to: 1` with no negative step is refused.
-    match step.signum() {
-        1 => from <= end,
-        -1 => from >= end,
-        _ => false,
+    match step.sign() {
+        Sign::Plus => from <= end,
+        Sign::Minus => from >= end,
+        Sign::NoSign => false,
     }
 }
 // end section oracle.rules

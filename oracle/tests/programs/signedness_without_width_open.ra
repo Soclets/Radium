@@ -1,0 +1,6 @@
+// trace D26
+// expect: not decided at line 4
+fn.main [] -> void:
+    var $n: int.signed[min: -1, max: 1] = 0; // here
+    return void;
+end fn.main

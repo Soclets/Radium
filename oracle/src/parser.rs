@@ -7,6 +7,8 @@ use crate::ast::{
     Function, Holder, LabelEntry, Labels, LoopRange, Operator, Parameter, ParameterDefault,
     Program, RangeEnd, RemainderRule, Rounding, Statement, StatementKind, TypeSpec,
 };
+use num_bigint::{BigInt, Sign};
+
 use crate::lexer::{Token, TokenKind, describe};
 use crate::outcome::Problem;
 
@@ -331,10 +333,16 @@ impl Parser {
             }
         };
         let name = self.take_value_name("a value's name, starting with `$` (D31)")?;
-        let type_spec = if self.eat(&TokenKind::Colon) {
-            Some(self.type_spec()?)
-        } else {
+        // trace D108: every value states its type, or `infer`.
+        if !self.eat(&TokenKind::Colon) {
+            return Err(
+                self.refuse("a value states its type, or `: infer` to have it worked out (D108)")
+            );
+        }
+        let type_spec = if self.eat_word("infer") {
             None
+        } else {
+            Some(self.type_spec()?)
         };
         if self.at(&TokenKind::Semicolon) {
             return Err(
@@ -907,35 +915,11 @@ impl Parser {
         let name = self.take_word("a type")?;
         match name.as_str() {
             "bool" => Ok(TypeSpec::Bool),
-            "int" => {
-                if self.at(&TokenKind::Dot) {
-                    return Err(Problem::not_built(
-                        line,
-                        "narrowed integers such as `int.signed.32_bit` are in a later slice (D26, D27)",
-                    ));
-                }
-                if !self.eat(&TokenKind::OpenBracket) {
-                    return Err(Problem::not_decided(
-                        line,
-                        "what a bare `int` means is open (D26); give its bounds: `int[min: …, max: …]`",
-                    ));
-                }
-                if self.at_word("max") {
-                    return Err(Problem::not_decided(
-                        line,
-                        "whether `max:` may come before `min:` isn't decided",
-                    ));
-                }
-                self.expect_word("min")?;
-                self.expect(&TokenKind::Colon, "`:` after `min` (D54)")?;
-                let min = self.bound()?;
-                self.expect(&TokenKind::Comma, "`,` and then `max:`")?;
-                self.expect_word("max")?;
-                self.expect(&TokenKind::Colon, "`:` after `max` (D54)")?;
-                let max = self.bound()?;
-                self.expect(&TokenKind::CloseBracket, "`]` closing the bounds")?;
-                Ok(TypeSpec::Integer(Bounds { min, max }))
-            }
+            "int" => self.integer_type(line),
+            "infer" => Err(Problem::refused(
+                line,
+                "`infer` is for local values only; parameters and results write their types (D14, D108)",
+            )),
             "string" => Err(Problem::not_decided(line, "text types aren't designed yet")),
             "void" => Err(Problem::refused(
                 line,
@@ -952,7 +936,96 @@ impl Parser {
         }
     }
 
-    fn bound(&mut self) -> Result<i128, Problem> {
+    /// `int[…]`, or a narrowed `int.signed.N_bit[…]` / `int.unsigned.N_bit[…]` (D14, D26, D27, D105).
+    fn integer_type(&mut self, line: usize) -> Result<TypeSpec, Problem> {
+        // `None` is bare `int`, `Some(None)` is `int.wide`, `Some(Some(…))` an exact width.
+        let width = if !self.eat(&TokenKind::Dot) {
+            None
+        } else if self.eat_word("wide") {
+            Some(None)
+        } else {
+            Some(Some(self.integer_width(line)?))
+        };
+        if !self.eat(&TokenKind::OpenBracket) {
+            return Err(Problem::not_decided(
+                line,
+                "an integer type without bounds is open (D26); give its bounds: `int[min: …, max: …]`",
+            ));
+        }
+        if self.at_word("max") {
+            return Err(Problem::not_decided(
+                line,
+                "whether `max:` may come before `min:` isn't decided",
+            ));
+        }
+        self.expect_word("min")?;
+        self.expect(&TokenKind::Colon, "`:` after `min` (D54)")?;
+        let min = self.bound()?;
+        self.expect(&TokenKind::Comma, "`,` and then `max:`")?;
+        self.expect_word("max")?;
+        self.expect(&TokenKind::Colon, "`:` after `max` (D54)")?;
+        let max = self.bound()?;
+        self.expect(&TokenKind::CloseBracket, "`]` closing the bounds")?;
+        let bounds = Bounds { min, max };
+        match width {
+            Some(Some((signed, bits))) => check_width(line, &bounds, signed, bits)?,
+            // trace D107: `int.wide` is only for bounds that need more than 64 bits.
+            Some(None) if fits_64_bits(&bounds) => {
+                return Err(Problem::refused(
+                    line,
+                    "these bounds fit in 64 bits, so `int.wide` isn't needed; write `int[…]` (D107)",
+                ));
+            }
+            // trace D105: a bare `int` holds at most 64 bits; wider ones say so.
+            None if !fits_64_bits(&bounds) => {
+                return Err(Problem::refused(
+                    line,
+                    "these bounds need more than 64 bits; write `int.wide[…]` or an exact width such as `int.unsigned.128_bit[…]` (D105, D107)",
+                ));
+            }
+            Some(None) | None => {}
+        }
+        Ok(TypeSpec::Integer(bounds))
+    }
+
+    /// Reads `signed.N_bit` or `unsigned.N_bit` after `int.`.
+    fn integer_width(&mut self, line: usize) -> Result<(bool, u32), Problem> {
+        let signed = match self
+            .take_word("`signed` or `unsigned` after `int.`")?
+            .as_str()
+        {
+            "signed" => true,
+            "unsigned" => false,
+            other => {
+                return Err(Problem::refused(
+                    line,
+                    format!(
+                        "`int.{other}` isn't a narrowing of `int`: there are `int.wide`, `int.signed` and `int.unsigned` (D26, D107)"
+                    ),
+                ));
+            }
+        };
+        if !self.eat(&TokenKind::Dot) {
+            return Err(Problem::not_decided(
+                line,
+                "a signedness without a width (`int.signed[…]`) isn't decided; write e.g. `int.signed.32_bit[…]`",
+            ));
+        }
+        let width = self.take_word("a width such as `32_bit`")?;
+        let bits = width
+            .strip_suffix("_bit")
+            .and_then(|digits| digits.parse::<u32>().ok())
+            .filter(|bits| *bits > 0)
+            .ok_or_else(|| {
+                Problem::refused(
+                    line,
+                    format!("`{width}` isn't a width; widths are written like `32_bit` (D26)"),
+                )
+            })?;
+        Ok((signed, bits))
+    }
+
+    fn bound(&mut self) -> Result<BigInt, Problem> {
         let negative = self.eat(&TokenKind::Minus);
         let Some(TokenKind::Integer(number)) = self.kind() else {
             return Err(Problem::not_built(
@@ -960,15 +1033,9 @@ impl Parser {
                 "bounds written with named constants are in a later slice",
             ));
         };
-        let number = *number;
+        let number = number.clone();
         self.advance();
-        if negative {
-            number.checked_neg().ok_or_else(|| {
-                Problem::not_built(self.line(), "numbers beyond 128 bits are beyond the oracle")
-            })
-        } else {
-            Ok(number)
-        }
+        Ok(if negative { -number } else { number })
     }
 }
 
@@ -1229,6 +1296,35 @@ impl Parser {
         self.advance();
         Ok(Expression { line, kind })
     }
+}
+
+/// Whether bounds fit in 64 bits, signed or unsigned (D27, D105).
+fn fits_64_bits(bounds: &Bounds) -> bool {
+    let unsigned_fits =
+        bounds.min.sign() != Sign::Minus && bounds.max < (BigInt::from(1) << 64_u32);
+    let signed_fits =
+        bounds.min >= -(BigInt::from(1) << 63_u32) && bounds.max < (BigInt::from(1) << 63_u32);
+    unsigned_fits || signed_fits
+}
+
+/// Refuses bounds that a narrowed width can't hold (D27).
+fn check_width(line: usize, bounds: &Bounds, signed: bool, bits: u32) -> Result<(), Problem> {
+    let (lowest, highest) = if signed {
+        let half = BigInt::from(1) << bits.saturating_sub(1);
+        (-half.clone(), half - 1)
+    } else {
+        (BigInt::from(0), (BigInt::from(1) << bits) - 1)
+    };
+    if bounds.min < lowest || bounds.max > highest {
+        let kind = if signed { "signed" } else { "unsigned" };
+        return Err(Problem::refused(
+            line,
+            format!(
+                "`int.{kind}.{bits}_bit` holds {lowest} to {highest}, which these bounds don't fit in (D27)"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 fn binary(line: usize, operator: Operator, left: Expression, right: Expression) -> Expression {

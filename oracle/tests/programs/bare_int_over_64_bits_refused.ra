@@ -1,0 +1,6 @@
+// trace D105
+// expect: refused at line 4
+fn.main [] -> void:
+    var $huge: int[min: 0, max: 10_000_000_000_000_000_000_000_000_000_000_000_000_000] = 0; // here
+    return void;
+end fn.main

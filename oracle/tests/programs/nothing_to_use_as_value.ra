@@ -6,6 +6,6 @@ fn show [$n: int[min: 0, max: 9]] -> void:
 end fn show
 
 fn.main [] -> void:
-    var $x = show(1); // here
+    var $x: infer = show(1); // here
     return void;
 end fn.main

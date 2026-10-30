@@ -2,7 +2,7 @@
 // trace D87
 // expect: refused at line 7
 fn.main [] -> void:
-    var $x = 3;
+    var $x: infer = 3;
 // the next line is a lone comment mark
 //
     return void;

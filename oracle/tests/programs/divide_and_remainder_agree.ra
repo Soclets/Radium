@@ -2,8 +2,8 @@
 // expect: runs
 // output: true
 fn.main [] -> void:
-    var $a = -17;
-    var $b = 5;
+    var $a: infer = -17;
+    var $b: infer = 5;
     std::print($b x ($a div.floor $b) + ($a mod.floor $b) equal $a, newline);
     return void;
 end fn.main

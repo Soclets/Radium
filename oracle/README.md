@@ -10,6 +10,9 @@ cargo run -q -- run tests/programs/hello.ra
 
 The program's output goes to stdout and the verdict to stderr.
 
+Dependencies (D15 allows tools written by others): `num-bigint`, `num-integer` and `num-traits`, all MIT OR
+Apache-2.0, so integers are exact at any size (D104).
+
 ## Verdicts
 
 | Verdict | Meaning |
@@ -19,7 +22,7 @@ The program's output goes to stdout and the verdict to stderr.
 | `check fails at line N` | A check site failed while it ran (bounds, exact `div`, `mod`, a contract, `decreases`, a range). |
 | `not decided at line N` | It uses something the design hasn't decided. Never guessed. |
 | `not built at line N` | It uses something decided that the oracle doesn't run yet. |
-| `gives up at line N` | The oracle hit one of its own limits (10 million steps, 200 nested calls, 128-bit numbers). |
+| `gives up at line N` | The oracle hit one of its own limits (10 million steps, 200 nested calls). Numbers have no size limit (D104). |
 | `oracle fault` | A bug in the oracle, never in the program. |
 
 ## Tests
@@ -28,7 +31,8 @@ The program's output goes to stdout and the verdict to stderr.
 cargo test
 ```
 
-Each program in `tests/programs/` says what should happen, in comments at the top:
+Each program in `tests/programs/` says what should happen, in comments at the top (D103). The oracle drops comments;
+the test runner reads them as text:
 
 ```
 // trace D37
@@ -46,16 +50,16 @@ end fn.main
 
 ## What the first slice runs (D93)
 
-`fn.main` (D101), blocks and `end` (D13), `;` (D29), comments (D86, D87), `var`/`var.immut`/`var.mut`/`const` and `$` (D30, D31),
-`int[min: …, max: …]` and `bool` (D14, D27, D60), `+`, `-`, `x`, `div` and its narrowings, `mod` and its narrowings,
+`fn.main` (D101), blocks and `end` (D13), `;` (D29), comments (D86, D87), `var`/`var.immut`/`var.mut`/`const`, `$`, and a type or `: infer` on every value (D30, D31, D108),
+`int[min: …, max: …]` up to 64 bits, `int.wide[…]` beyond, and `int.signed.N_bit[…]` / `int.unsigned.N_bit[…]` at
+any width (D14, D27, D104, D105, D107), and `bool` (D60), `+`, `-`, `x`, `div` and its narrowings, `mod` and its narrowings,
 comparisons, `and`/`or`/`not` (D34–D40), `if` (D71), `for … in range[…]`, `while … decreases`, `forever`, `break` and
 named loops (D73–D77), `fn`/`fn.pure`, labels, defaults, `requires`, `ensures`, `old[…]` (D51–D54), `-> void` and `return void;`
 (D98–D100), `return` and `result`, with calls inside values (D95), every path ending in `return` (D96, D102), results
 never ignored (D97), `my.` on clashes
 (D43), ownership words where they apply to integers (D84, D91, D92), and `std::print`.
 
-**Not built yet:** `struct`, `union.tagged`, `match`, `array`, going through collections, narrowed integers
-(`int.signed.32_bit`), failures and `otherwise`, `decreases` on functions, hex numbers.
+**Not built yet:** `struct`, `union.tagged`, `match`, `array`, going through collections, failures and `otherwise`, `decreases` on functions, hex numbers.
 
 **Not decided, so reported:** parameters for `fn.main`, and anything it gives back but `void` (D101); a bare `int`;
 text types (`string`); shadowing; `fails … exactly when`; shields; `invariant`/`assert` spellings; a way to throw a
@@ -65,9 +69,10 @@ result away on purpose (D97).
 
 The oracle had to read these one way to run at all. None is a decision; each waits for the owner.
 
-1. **The test format above** (`// expect:`, `// output:`, `// here`).
-2. **A local without bounds holds an exact integer.** D14 makes bounds optional on locals because Geiger infers them;
-   the oracle can't infer, so it checks bounds only where they are written.
+1. ~~The test format~~: decided, D103.
+2. **An `infer` value holds an exact integer, of any size.** Geiger works out its bounds (D108); the oracle can't, so it
+   checks bounds only where they are written, and a value that grows without limit runs into the step limit instead of
+   being refused.
 3. **Arithmetic is exact until a value is stored.** `$a + $b` is computed exactly, and checked when it lands in a
    bounded value or parameter.
 4. **Operator strength:** `x`, `div`, `mod` bind tighter than `+`, `-` (school maths, D34); comparisons come next;

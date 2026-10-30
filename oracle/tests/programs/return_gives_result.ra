@@ -9,7 +9,7 @@ fn double [$n: int[min: 0, max: 9]] -> int[min: 0, max: 18]:
 end fn double
 
 fn.main [] -> void:
-    var $answer = double(4);
+    var $answer: infer = double(4);
     std::print($answer, newline);
     std::print(double(4) + 1, newline);
     return void;

@@ -3,7 +3,7 @@
 // expect: runs
 // output: 1 2 3
 fn.main [] -> void:
-    var $count = 0;
+    var $count: infer = 0;
     forever:
         $count = $count + 1;
         std::print($count);

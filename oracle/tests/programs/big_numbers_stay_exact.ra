@@ -1,0 +1,12 @@
+// trace D14
+// trace D104
+// expect: runs
+// output: 1606938044258990275541962092341162602522202993782792835301376
+fn.main [] -> void:
+    var $power: infer = 1;
+    for $i in range[from: 1, to: 200]:
+        $power = $power x 2;
+    end for
+    std::print($power, newline);
+    return void;
+end fn.main

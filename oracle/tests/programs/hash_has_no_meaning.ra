@@ -2,6 +2,6 @@
 // expect: refused at line 4
 fn.main [] -> void:
     # not a comment // here
-    var $x = 3;
+    var $x: infer = 3;
     return void;
 end fn.main

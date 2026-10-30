@@ -39,8 +39,8 @@ pub enum Outcome {
         /// What the program printed before the check failed.
         output: String,
     },
-    /// The oracle stopped on one of its own limits: too many steps, calls nested too deep, or a number beyond
-    /// 128 bits. Not a judgement on the program.
+    /// The oracle stopped on one of its own limits: too many steps or calls nested too deep. Not a judgement on the
+    /// program.
     GaveUp {
         /// The line the oracle was on.
         line: usize,

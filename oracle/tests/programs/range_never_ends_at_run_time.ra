@@ -1,7 +1,7 @@
 // trace D74
 // expect: check fails at line 5
 fn.main [] -> void:
-    var $start = 5;
+    var $start: infer = 5;
     for $i in range[from: $start, to: 1]: // here
         std::print($i);
     end for

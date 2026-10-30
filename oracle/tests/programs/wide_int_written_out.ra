@@ -1,0 +1,10 @@
+// trace D104
+// trace D105
+// expect: runs
+// output: 30000000000000000000000000000000000000000
+fn.main [] -> void:
+    var $huge: int.unsigned.256_bit[min: 0, max: 10_000_000_000_000_000_000_000_000_000_000_000_000_0000] = 10_000_000_000_000_000_000_000_000_000_000_000_000_000;
+    $huge = $huge x 3;
+    std::print($huge, newline);
+    return void;
+end fn.main

@@ -1,0 +1,9 @@
+// trace D27
+// trace D105
+// expect: runs
+// output: 18446744073709551615
+fn.main [] -> void:
+    var $most: int[min: 0, max: 18_446_744_073_709_551_615] = 18_446_744_073_709_551_615;
+    std::print($most, newline);
+    return void;
+end fn.main

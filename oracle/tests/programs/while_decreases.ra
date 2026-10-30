@@ -2,7 +2,7 @@
 // expect: runs
 // output: 3;2;1;
 fn.main [] -> void:
-    var $remaining = 3;
+    var $remaining: infer = 3;
     while $remaining > 0:
         decreases $remaining;
         std::print($remaining, ";");

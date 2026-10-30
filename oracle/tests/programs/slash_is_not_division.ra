@@ -2,6 +2,6 @@
 // trace D37
 // expect: refused at line 5
 fn.main [] -> void:
-    var $x = 6 / 2; // here
+    var $x: infer = 6 / 2; // here
     return void;
 end fn.main

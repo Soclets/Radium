@@ -1,7 +1,7 @@
 // trace D30
 // expect: refused at line 5
 fn.main [] -> void:
-    var.immut $b = 2;
+    var.immut $b: infer = 2;
     $b = 3; // here
     return void;
 end fn.main

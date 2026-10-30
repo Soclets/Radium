@@ -1,0 +1,9 @@
+// trace D107
+// expect: runs
+// output: 5000000000000000000000000
+fn.main [] -> void:
+    var $total: int.wide[min: 0, max: 5_000_000_000_000_000_000_000_000] = 0;
+    $total = 5_000_000_000_000_000_000_000_000;
+    std::print($total, newline);
+    return void;
+end fn.main

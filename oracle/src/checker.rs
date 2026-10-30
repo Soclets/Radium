@@ -9,6 +9,8 @@ use crate::ast::{
     Call, CallTarget, Changeability, Expression, ExpressionKind, Function, Holder, LoopRange,
     Operator, Program, RangeEnd, Statement, StatementKind, TypeSpec, ValueKind,
 };
+use num_bigint::BigInt;
+
 use crate::binding::{Binding, bind_arguments};
 use crate::outcome::Problem;
 use crate::rules::{is_radium_word, range_can_end};
@@ -93,7 +95,7 @@ impl<'program> Checker<'program> {
         self.function = Some(function);
         self.scopes.push(HashMap::new());
         for parameter in &function.parameters {
-            check_type(parameter.type_spec, parameter.line)?;
+            check_type(&parameter.type_spec, parameter.line)?;
             if self.lookup(&parameter.name).is_some() {
                 return Err(Problem::refused(
                     parameter.line,
@@ -143,7 +145,7 @@ impl<'program> Checker<'program> {
                 name,
                 type_spec,
                 value,
-            } => self.declaration(line, *holder, name, *type_spec, value),
+            } => self.declaration(line, *holder, name, type_spec.as_ref(), value),
             StatementKind::Assign { name, value } => self.assignment(line, name, value),
             StatementKind::Call(call) => {
                 if self.call(call, Context::Plain)?.is_some() {
@@ -194,7 +196,7 @@ impl<'program> Checker<'program> {
         let Some(function) = self.function else {
             return Err(Problem::refused(line, "`return` is only inside a function"));
         };
-        match (function.result, value) {
+        match (function.result.as_ref(), value) {
             (None, None) => Ok(()),
             (None, Some(_)) => Err(Problem::refused(
                 line,
@@ -235,7 +237,7 @@ impl<'program> Checker<'program> {
         line: usize,
         holder: Holder,
         name: &str,
-        type_spec: Option<TypeSpec>,
+        type_spec: Option<&TypeSpec>,
         value: &Expression,
     ) -> Result<(), Problem> {
         let value_kind = self.expression(value, Context::Plain)?;
@@ -412,7 +414,7 @@ impl<'program> Checker<'program> {
                         ));
                     }
                 }
-                Ok(function.result.map(TypeSpec::kind))
+                Ok(function.result.as_ref().map(TypeSpec::kind))
             }
         }
     }
@@ -433,12 +435,15 @@ impl<'program> Checker<'program> {
         if let Some(step) = &range.step_by {
             self.integer(step, "a range's `step_by:` (D73)")?;
         }
-        let step_value = range.step_by.as_ref().map_or(Some(1), literal_integer);
+        let step_value = range
+            .step_by
+            .as_ref()
+            .map_or(Some(BigInt::from(1)), literal_integer);
         if let (Some(from), Some(end), Some(step)) = (
             literal_integer(&range.from),
             literal_integer(end),
             step_value,
-        ) && !range_can_end(from, end, step)
+        ) && !range_can_end(&from, &end, &step)
         {
             return Err(Problem::refused(
                 line,
@@ -561,7 +566,7 @@ impl<'program> Checker<'program> {
                 }
             }
             ExpressionKind::Result => {
-                let result = self.function.and_then(|function| function.result);
+                let result = self.function.and_then(|function| function.result.as_ref());
                 match (context, result) {
                     (Context::Ensures, Some(result)) => Ok(result.kind()),
                     _ => Err(Problem::refused(
@@ -873,7 +878,7 @@ fn breaks_out(body: &[Statement], loop_name: Option<&String>, depth: usize) -> b
     })
 }
 
-fn check_type(type_spec: TypeSpec, line: usize) -> Result<(), Problem> {
+fn check_type(type_spec: &TypeSpec, line: usize) -> Result<(), Problem> {
     if let TypeSpec::Integer(bounds) = type_spec
         && bounds.min > bounds.max
     {
@@ -885,10 +890,10 @@ fn check_type(type_spec: TypeSpec, line: usize) -> Result<(), Problem> {
     Ok(())
 }
 
-fn literal_integer(expression: &Expression) -> Option<i128> {
+fn literal_integer(expression: &Expression) -> Option<BigInt> {
     match &expression.kind {
-        ExpressionKind::Integer(number) => Some(*number),
-        ExpressionKind::Negate(inner) => literal_integer(inner)?.checked_neg(),
+        ExpressionKind::Integer(number) => Some(number.clone()),
+        ExpressionKind::Negate(inner) => literal_integer(inner).map(|number| -number),
         _ => None,
     }
 }

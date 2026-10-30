@@ -4,6 +4,8 @@
 use std::iter::Peekable;
 use std::str::Chars;
 
+use num_bigint::BigInt;
+
 use crate::outcome::Problem;
 
 /// One token and the line it is on.
@@ -20,7 +22,7 @@ pub(crate) enum TokenKind {
     Word(String),
     /// A value's name, without its `$` (D31).
     ValueName(String),
-    Integer(i128),
+    Integer(BigInt),
     /// Text between `"` and `"`.
     Text(String),
     Colon,
@@ -204,28 +206,38 @@ fn read_integer(
             "hex numbers (`0x…`, D34) are in a later slice",
         ));
     }
-    let mut digits = String::from(first);
+    let mut written = String::from(first);
     while let Some(character) =
         characters.next_if(|character| character.is_ascii_digit() || *character == '_')
     {
-        if character != '_' {
-            digits.push(character);
-        }
+        written.push(character);
     }
     if characters.peek().is_some_and(char::is_ascii_alphabetic) {
+        // trace D26: a narrowing such as `32_bit` starts with digits and joins a word with `_` (D35).
+        if written.ends_with('_') {
+            return Ok(TokenKind::Word(read_name_after(written, characters)));
+        }
         return Err(Problem::refused(
             line,
             "a number runs straight into a word; `x` needs spaces around it (D34)",
         ));
     }
+    let digits: String = written
+        .chars()
+        .filter(|character| *character != '_')
+        .collect();
     digits
-        .parse::<i128>()
+        .parse::<BigInt>()
         .map(TokenKind::Integer)
-        .map_err(|_| Problem::not_built(line, "numbers beyond 128 bits are beyond the oracle"))
+        .map_err(|_| Problem::refused(line, format!("`{written}` isn't a number")))
 }
 
 fn read_name(first: char, characters: &mut Peekable<Chars<'_>>) -> String {
-    let mut name = String::from(first);
+    read_name_after(String::from(first), characters)
+}
+
+fn read_name_after(start: String, characters: &mut Peekable<Chars<'_>>) -> String {
+    let mut name = start;
     while let Some(character) =
         characters.next_if(|character| character.is_ascii_alphanumeric() || *character == '_')
     {

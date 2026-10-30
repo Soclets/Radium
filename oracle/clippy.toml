@@ -1,0 +1,2 @@
+# Big integers can't overflow, so arithmetic on them has no hidden side effect (D104).
+arithmetic-side-effects-allowed = ["num_bigint::BigInt"]

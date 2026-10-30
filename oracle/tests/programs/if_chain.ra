@@ -2,7 +2,7 @@
 // expect: runs
 // output: warm
 fn.main [] -> void:
-    var $celsius = 25;
+    var $celsius: infer = 25;
     if $celsius > 30:
         std::print("hot", newline);
     else if $celsius > 20:
