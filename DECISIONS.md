@@ -756,6 +756,84 @@ refused** (`print.shortest.stdout("hi")` → "write `print("hi")`"), as D39 does
 `defaults` may change in a later version, so spelling them out stays allowed, to pin behaviour. **`std` uses
 `defaults.fixed`**, since its behaviour is part of the standard (D55). Bare `std::print(…)` is the everyday form.
 
+## D58 — `struct`, and the keyword rule (2026-10-30)
+
+Owner asked first how the word reads in programming, maths and English; then which choice is consistent with `fn`.
+Design claude, owner: "yes". **`struct`**: named fields stored together as one value.
+
+```
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+var $r: reading = reading[time = 3600, celsius = 21];
+var $t = $r.celsius;
+```
+
+**The keyword rule** (from D51 and this): a keyword is **the settled programming word** — Radium's readers are
+programmers — and narrowing adds a stricter (e.g. maths) meaning where it matters, as `fn` → `fn.pure`. (`record` was
+considered: better English, but Java/C# give it a "can't be changed" meaning.) Fields have ranges (D14), are built
+with `[ ]` and `=` (D50), and are read by narrowing, `$r.celsius` (D26).
+
+Proposed by design claude, owner: "yes". **Fields are not vars**: they are named parts of a value, so they carry no
+`var` and no `$`. **A field's changeability follows whatever holds the struct** (`var.immut $r` → no field of `$r`
+changes). A field may be locked for good with **`.immut`** (`id.immut: int[…];`), even inside a `var.mut` holder;
+the compiler checks it. There is no `.mut` for fields.
+
+## D59 — `union.tagged`, and a shield-only `union` (2026-10-30)
+
+Owner proposed `union.tag` / `union_tagged` over design claude's `enum`; design claude proposed the family below,
+owner: "yes". A value that is one of several named cases, which may carry data, is a **`union.tagged`** — the
+established term "tagged union":
+
+```
+union.tagged status:
+    ok;
+    warming_up;
+    failed[code: int[min: 1, max: 255]];
+end union.tagged status
+```
+
+**Bare `union`** is C's kind — no tag, no record of which case is in use — and is allowed **only inside shields** (D6),
+for C interop, like raw pointers. (`enum` was considered: common, but its meaning splits between C's constants and
+Rust's data-carrying cases. CyborgPL writes `union.tag`.)
+
+Proposed by design claude, owner: "yes": **a case is always written with its type** — `status.ok` (narrowing, D26),
+`status.failed[code = 3]` (built like a struct, D50). A case with no data takes no brackets. No shortcut like `.ok`
+when the type is known. How a value is matched against its cases is control flow (step 4).
+
+## D60 — `bool`, and no truthiness (2026-10-30)
+
+Proposed by design claude, owner: "yes". True/false values are **`bool`**, with **`true`** and **`false`**. A
+condition accepts only a `bool`: numbers, text and lists never count as true or false (`if $count:` is refused;
+write `if $count > 0:`), since "truthy" values are a trap (D33).
+
+## D61 — Abbreviations in the language (2026-10-30)
+
+Owner noticed `bool` saves only three letters, which D19's rule wouldn't allow, yet `bool` and `struct` feel right;
+then that `fn` is on keyboards (the Fn key), and that "normal people don't know `struct`". Design claude proposed,
+owner: "yes". For the language's own words (D19 stays the rule for implementation code):
+
+> A short form is used only when it is **already settled for programmers** (the same spelling across major
+> languages) **or for everyone** (maths notation, everyday use). Either one is enough. Otherwise, the full word.
+
+| Short form | Settled for | |
+|---|---|---|
+| `int`, `bool`, `struct`, `const`, `var`, `std` | programmers | ✅ |
+| `fn` | everyone (the Fn key) | ✅ |
+| `min`, `max`, `mod` | everyone (maths, everyday) | ✅ |
+| `len`, `newln` | neither | ❌ — `length`, `newline` |
+
+`div` (D34) follows the programming side (Pascal, Haskell).
+
+## D62 — A folder for design rules (2026-10-30)
+
+Owner: "Make a separate folder just for design rules, in the GH repo." **`design-rules/`** collects the general rules
+the design is judged by, one file each, citing the decisions they came from: clear syntax (D33), choosing words (D34,
+D58, D61), dots and underscores (D26, D35), brackets (D50), marks (D28, D31, D43), defaults (D27, D39, D42, D57).
+DECISIONS.md stays the record; when a rule changes, it gets a new entry here and the rule's file is updated.
+
 ---
 
 ## Open

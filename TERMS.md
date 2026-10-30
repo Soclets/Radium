@@ -38,6 +38,9 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | proof checker | `ProofChecker` | The small, Verus-verified program that re-checks proof certificates | D12, D16 | |
 | isotope | `Isotope` | A compiler extension: trusted, not proven | D23 | plugin, limb |
 | compound | `Compound` | A library written in Radium: proven like any other code | D23 | kit, package |
+| struct | `Struct` | Named fields stored together as one value | D58 | record |
+| tagged union | `TaggedUnion` | `union.tagged`: a value that is one of several named cases, which may carry data | D59 | enum, sum type, variant |
+| union | `RawUnion` | Bare `union`: C's untagged union, allowed only inside shields | D59 | |
 | range | `Range` | The `min`/`max` refinement on a fixed-width integer | D14 | |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
 | own-name mark | — | `my.`, needed only when the writer's function or type name clashes with a built-in (`my.reading`) | D43 | own-function mark |

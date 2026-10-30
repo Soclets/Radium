@@ -1,7 +1,8 @@
 # Radium
 
 Design repository for **Radium**, a programming language for final products that cannot have any mistakes. Start
-with `DECISIONS.md` (every decision, numbered) and `TERMS.md` (one name per concept).
+with `DECISIONS.md` (every decision, numbered), `TERMS.md` (one name per concept) and `design-rules/` (the general
+rules every new choice is checked against).
 
 ## Ground rules
 
@@ -10,7 +11,8 @@ with `DECISIONS.md` (every decision, numbered) and `TERMS.md` (one name per conc
 - **One question at a time, in plain chat text.** Never use the AskUserQuestion tool or other popups: they don't
   always appear.
 - **Record each decision in `DECISIONS.md` as it is made**, noting whether the owner designed it or said yes to a
-  proposal. Numbers are permanent (code cites them with `trace D<n>`, D18). New concepts go into `TERMS.md`.
+  proposal. Numbers are permanent (code cites them with `trace D<n>`, D18). New concepts go into `TERMS.md`. When a
+  decision creates or changes a general rule, update its file in `design-rules/` too.
 - **Commit and push only when the owner says so.**
 
 ## Sessions

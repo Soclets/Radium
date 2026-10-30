@@ -12,5 +12,7 @@ There is no compiler yet. This repository holds the design:
 
 - [`DECISIONS.md`](DECISIONS.md) — every design decision, numbered. Code will point at these numbers.
 - [`TERMS.md`](TERMS.md) — one name per concept, and the allowed abbreviations.
+- [`design-rules/`](design-rules/) — the general rules the design is judged by: clear syntax, choosing words,
+  dots and underscores, brackets, marks, defaults.
 
 Licensed under the [Apache License 2.0](LICENSE).
