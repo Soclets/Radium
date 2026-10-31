@@ -13,14 +13,14 @@ Every loop must provably end, except `forever` (D7, D76).
    | `before:` | stop just before this number |
    | `step_by:` | the amount added each time; 1 when left out; negative counts down |
 
-2. A range has `to:` or `before:`, never both. A range without `from:`: **not decided**. Other labels (`until:`, `by:`,
-   …) are refused (D73).
+2. A range has `to:` or `before:`, never both. **`from:` is required** (D113). Other labels (`until:`, `by:`, …) are
+   refused (D73).
 3. **A loop whose step can never reach its end is refused** when its numbers are known while compiling, for example
    `from: 5, to: 1` with no negative step, or a step of 0 (D74). Otherwise it is a check site.
-4. The order the labels are written in: the oracle requires `from:`, then `to:`/`before:`, then `step_by:`
-   (D54's declared order). Whether that binds `range`: **not decided**.
+4. The labels are written in their declared order: `from:`, then `to:` or `before:`, then `step_by:`; out of order is
+   refused (D54, D113).
 5. `for $r in $readings` goes through a collection (D74); see section 9.
-6. Changing the loop's own value inside the loop: **not decided**.
+6. The loop's own value is `var.immut` for each trip: changing it inside the loop is refused (D115).
 
 ```
 for $i in range[from: 1, to: 5]:                // 1, 2, 3, 4, 5
@@ -29,7 +29,7 @@ for $i in range[from: 5, to: 1, step_by: -1]:   // 5, 4, 3, 2, 1
 ```
 
 *Tests:* `range_to_and_before`, `range_never_ends`, `range_never_ends_at_run_time`, `range_label_order`,
-`range_until_is_not_used`.
+`range_needs_from`, `range_until_is_not_used`, `loop_value_is_fixed`.
 
 ## 6.2 `while`
 

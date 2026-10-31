@@ -69,6 +69,7 @@
 ## 7.6 `std::print`
 
 1. `std::print(…)` writes its items to standard output (D26, D27). `newline` writes a line break (D94).
-2. How items are joined (the oracle prints them one after another with nothing between) and whether `print` adds a
-   line break of its own: **not decided**.
-   *Tests:* `hello`, `newln_written_in_full`.
+2. Items are written one after another, each formatted by its own type, **with nothing added between them and no line
+   break of its own** (D112). The `,` between items separates arguments, as in every call (D50).
+3. How a number becomes text outside `print`, and `concat`: **not decided** (text types are open).
+   *Tests:* `hello`, `print_adds_nothing`, `newln_written_in_full`.

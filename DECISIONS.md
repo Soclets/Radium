@@ -1753,6 +1753,155 @@ Operators of the same strength group from the left, as in school maths: `10 - 3 
 `and` and `or` without brackets is refused**: write `$a or ($b and $c)`. Chained comparisons (`1 < $x < 5`) remain
 open.
 
+## D112 — `std::print` adds nothing of its own (2026-10-30)
+
+Owner asked CyborgPL's design session (from memory, no docs) how print's commas differ from `concat`: commas give
+print several items to write, each formatted by its own type; `concat` builds a new text value and prints nothing;
+CyborgPL's sore point was that turning a number into text was never settled. Design claude proposed, owner: "yes".
+**`std::print` writes its items one after another, with nothing added between them and no line break of its own**;
+a line break is the item `newline`. The `,` between items separates arguments, as in every call (D50).
+
+```
+std::print("total: ", $sum, newline);    // total: 42, then a line break
+std::print($a, $b);                       // 12
+```
+
+`concat` builds a text value; it belongs with text types, which are open, as is how a number becomes text.
+
+## D113 — `range`'s labels keep their order; `from:` is required (2026-10-30)
+
+Proposed by design claude, owner: "yes". D54's rule for labels applies to `range` too: its labels are written in their
+declared order, **`from:`, then `to:` or `before:`, then `step_by:`**; out of order is refused. **`from:` is
+required**, so a loop's start is always written, never a hidden 0 or 1 (D33).
+
+```
+for $i in range[from: 1, to: 5]:      // fine
+for $i in range[to: 5, from: 1]:      // refused: out of order
+for $i in range[to: 5]:               // refused: no from:
+```
+
+## D114 — A failed check stops the program (2026-10-30)
+
+Proposed by design claude, owner: "yes". In mode 1 and mode 2 builds (D9), Curie places a check at every check site;
+the program carries them out while it runs, through the runtime Curie links into every program (D16). **When a check
+fails, the program stops at once**, writes one line to stderr naming the file, the line and the rule broken, and
+exits with a failure status:
+
+```
+check failed: report.ra:5: $byte would hold 300, outside int[min: 0, max: 255] (D14)
+```
+
+It is **not** a failure the program can handle (D11): a failed check is a bug (in the program in mode 1, in Geiger in
+mode 2), not something from outside, so nothing runs after it. A final build has no checks to fail (D9). The exact
+exit status is target-defined (D55).
+
+## D115 — A `for` loop's own value can't be changed (2026-10-31)
+
+Proposed by design claude, owner: "yes". Inside `for $i in …:`, **`$i` is `var.immut` for each trip; changing it is
+refused**. A `for` over a range ends by its nature (D75) only because the loop alone moves `$i`. A loop that needs to
+jump is a `while` with `decreases`, where the movement is written.
+
+## D116 — Error messages say only what's certain (2026-10-31)
+
+Design claude first proposed messages with what, why and a list of possible fixes; owner: "2 with multiple fixes is
+more places to get wrong". Design claude then proposed, owner: "yes":
+
+- **When a mistake has exactly one fix, the message shows that fix**, as code: `newln` → `newline`, `div.exact` →
+  `div`, a missing `;`, `x(…)` → `my.x(…)`.
+- **When it has more than one, the message gives no suggestions, only facts:** **what** is wrong; **why**, the rule
+  and its decision number; and **when**, Geiger's counterexample (the values that break it), where there is one.
+
+```
+refused: report.ra:5:13
+ 5 |     $byte = $byte + 100;
+   |             ^^^^^^^^^^^
+ what: this can be 355, but $byte holds int[min: 0, max: 255]
+ why:  every value stays within its bounds (D14)
+ when: $byte is 255 here
+```
+
+Curie never writes a writer's code for them when there is a choice to make (D33). The exact layout is open.
+
+## D117 — A message's place, for tools and for people (2026-10-31)
+
+Owner asked whether `report.ra:3:22` was a human or a software format, and to add the other one after a `,`; then:
+the human one counts "grapheme cluster, no shit". A message's first line gives the place twice: **the software form
+first** (`file:line:column`, which editors and terminals can jump to), **then the human form after a `,`**:
+
+```
+refused: report.ra:3:22, line 3 column 22
+```
+
+**The human column counts grapheme clusters**: one per character as a person sees it, however many bytes or code
+points it takes. Lines count from 1, columns from 1.
+
+Proposed by design claude, owner: "yes": **the software column counts UTF-8 bytes** (from 1), since Radium source is
+UTF-8 and a byte offset has only one meaning; tools convert it as they need. On a plain-English line the two columns
+are equal; with `°` (2 bytes, 1 cluster) before the spot, the software column is one higher:
+
+```
+refused: temps.ra:4:33, line 4 column 32
+```
+
+Open: the rest of the layout (settled by D118).
+
+## D118 — The rest of a message's layout (2026-10-31)
+
+Proposed by design claude, owner: "yes". Below the first line (D117):
+
+1. **the code line**, with its line number in the margin;
+2. **a pointer line**, with `^` under exactly the part in question, counted in grapheme clusters so it lines up under
+   what a person sees;
+3. **labelled lines**, lined up: `what:` (always), `why:` (always, the rule with its decision number), `when:` (when
+   Geiger has a counterexample), or `fix:` in place of `what:` when there is exactly one fix (D116).
+
+```
+refused: report.ra:5:13, line 5 column 13
+ 5 |     $byte = $byte + 100;
+   |             ^^^^^^^^^^^
+ what: this can be 355, but $byte holds int[min: 0, max: 255]
+ why:  every value stays within its bounds (D14)
+ when: $byte is 255 here
+```
+
+Open: the words that start the first line for each kind of message (settled by D119).
+
+## D119 — The three kinds of message (2026-10-31)
+
+Proposed by design claude, owner: "yes". The first line starts with the kind, using D2's words:
+
+| First word | When | Means |
+|---|---|---|
+| `refused:` | building | the code breaks a rule, or Geiger found values that break a check: a definite mistake |
+| `unproven:` | building | Geiger could prove it neither way: it may be fine, and needs a hint (an assert, an invariant) |
+| `check failed:` | running (modes 1 and 2, D114) | a check failed while the program ran |
+
+## D120 — A bare `string` is UTF-8 (2026-10-31)
+
+Owner asked whether `string` has a sensible default; design claude checked it against D27 and D42 and proposed,
+owner: "yes". **A bare `string` is UTF-8 text.** UTF-8 is what nearly all text is, and Radium source is UTF-8 (D117).
+Other encodings are narrowings (e.g. `string.utf16`, `string.ascii`); writing `string.utf8` is refused as a
+spelled-out default (D39).
+
+Open: the rest of text types (length bounds, storage, `concat`, turning numbers into text). What "one character"
+means: settled by D121.
+
+## D121 — Counting text always says its unit (2026-10-31)
+
+Proposed by design claude, owner: "yes". **Counting or indexing text has no default unit: it always says bytes, code
+points or grapheme clusters.** Each is right for a different job (storage and protocols; Unicode processing; what a
+person sees), and a silent default gives wrong answers on names, emoji and non-English text (D33).
+
+```
+var $t: string = "°C";
+length.bytes($t)        // 3
+length.points($t)       // 2
+length.graphemes($t)    // 2
+length($t)              // refused: say which
+```
+
+The names are placeholders.
+
 ---
 
 ## Open

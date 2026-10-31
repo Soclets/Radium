@@ -12,6 +12,7 @@ Radium are in [`implementation-rules/`](../implementation-rules/).
 | [Brackets](brackets.md) | `( )` runs; `[ ]` describes or holds; maths grouping is the one exception | D50 |
 | [Marks](marks.md) | `$` your values, `@` an isotope, `my.` only on a clash, a capital for ownership words | D28, D31, D43, D84 |
 | [Built in or imported](built-in-or-import.md) | Compound if it can be written in Radium; built in if identical on every target; otherwise an isotope | D22, D23, D104 |
+| [Error messages](error-messages.md) | Only what's certain: the fix when there's exactly one, otherwise what, why and when | D116 |
 | [Defaults](defaults.md) | A bare form's default never hides a choice and is what almost every use wants | D27, D39, D42, D57 |
 
 When a rule changes, `DECISIONS.md` gets a new entry saying so, and the rule's file here is updated to match. A

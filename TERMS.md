@@ -76,6 +76,8 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | requirement | — | What a generic placeholder needs (`[?T: ordered]`: `?T` requires `ordered`) | D69, D74 | bound, trait bound |
 | narrowing | — | A `.` that makes the thing before it more specific (`int.signed`, `div.floor`) | D26, D35 | |
 | own-name mark | — | `my.`, needed only when the writer's function or type name clashes with a built-in (`my.reading`) | D43 | own-function mark |
+| string | `string` | UTF-8 text; other encodings are narrowings | D94, D120 | `str`, `string.utf8` |
+| grapheme cluster | — | One character as a person sees it, however many bytes or code points it takes | D117, D121 | |
 | newline | `newline` | The line break `std::print` writes when given it | D94 | `newln` |
 | comment | `// ` | Text for readers, from `//` and a space to the end of the line | D85, D87 | `#` (as a comment mark) |
 | comment block | `comment:` … `end comment` | A comment that spans lines; blank lines inside belong to it | D86 | `#[ … ]`, `/* */` |

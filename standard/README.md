@@ -23,6 +23,8 @@ and the inside is its writer's responsibility.
 - **Refused**: the compiler, Curie, won't build the program.
 - **Check site**: a place that could go wrong. In the final build each one is proven; in modes 1 and 2 it is also
   checked as the program runs (D9).
+- **A failed check** (modes 1 and 2 only) stops the program at once: one line on stderr naming the file, the line and
+  the rule, then a failure exit status (target-defined). It can't be handled; nothing runs after it (D114).
 - **Writer**: whoever writes a Radium program (D21).
 
 ## Contents
