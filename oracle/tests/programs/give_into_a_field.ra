@@ -3,11 +3,11 @@
 // expect: runs
 // output: 20
 struct week:
-    rain: array[int[min: 0, max: 99], length: 3];
+    rain: array<int[min: 0, max: 99]>[length: 3];
 end struct week
 
 fn.main [] -> void:
-    var $xs: array[int[min: 0, max: 99], length: 3] = [10, 20, 30];
+    var $xs: array<int[min: 0, max: 99]>[length: 3] = [10, 20, 30];
     var $w: week = week[rain = Give $xs];
     std::print($w.rain[pos: 2], newline);
     return void;

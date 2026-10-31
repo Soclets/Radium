@@ -1,0 +1,15 @@
+// trace D127
+// expect: refused at line 8
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+struct index <`text`, `table`: lasts_at_least `text` and lasts_at_least `text`>: // here
+    words: Lend from `text` reading;
+    lookup: Lend from `table` reading;
+end struct index
+
+fn.main [] -> void:
+    return void;
+end fn.main

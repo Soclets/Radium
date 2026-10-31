@@ -1,7 +1,7 @@
 // trace D64
 // expect: refused at line 5
 fn.main [] -> void:
-    var $xs: array[int[min: 0, max: 9], length: 3] = [1, 2, 3];
+    var $xs: array<int[min: 0, max: 9]>[length: 3] = [1, 2, 3];
     std::print($xs[1], newline); // here
     return void;
 end fn.main

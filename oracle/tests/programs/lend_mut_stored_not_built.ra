@@ -1,0 +1,11 @@
+// trace D135
+// expect: not built at line 9
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+fn.main [] -> void:
+    var $r: reading = reading[time = 0, celsius = 20];
+    var $v: Lend.mut from $r reading = Lend.mut $r; // here
+    return void;
+end fn.main

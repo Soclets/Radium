@@ -1,0 +1,18 @@
+// trace D127
+// expect: refused at line 16
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+struct index <`text`, `table`: lasts_at_least `text`>:
+    words: Lend from `text` reading;
+    lookup: Lend from `table` reading;
+end struct index
+
+fn.main [] -> void:
+    var $l: reading = reading[time = 0, celsius = 20];
+    var $a: reading = reading[time = 1, celsius = 21];
+    var $i: index<`text`: $l, `table`: $a> = index[words = Lend $l, lookup = Lend $a]; // here
+    return void;
+end fn.main

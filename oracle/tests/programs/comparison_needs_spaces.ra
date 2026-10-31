@@ -1,0 +1,10 @@
+// trace D137
+// expect: refused at line 6
+fn.main [] -> void:
+    var $a: int[min: 0, max: 9] = 1;
+    var $b: int[min: 0, max: 9] = 2;
+    if $a<$b: // here
+        std::print("less", newline);
+    end if
+    return void;
+end fn.main

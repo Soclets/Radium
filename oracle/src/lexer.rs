@@ -14,6 +14,8 @@ use crate::outcome::{Place, Problem};
 pub(crate) struct Token {
     pub(crate) kind: TokenKind,
     pub(crate) place: Place,
+    /// Whether a space or the start of a line comes before it, which tells a comparison from `< >` (D137, D138).
+    pub(crate) spaced_before: bool,
 }
 
 /// The kinds of token.
@@ -23,6 +25,8 @@ pub(crate) enum TokenKind {
     Word(String),
     /// A value's name, without its `$` (D31).
     ValueName(String),
+    /// A named source, without its backticks (D126).
+    SourceName(String),
     Integer(BigInt),
     /// Text between `"` and `"`.
     Text(String),
@@ -140,9 +144,13 @@ impl Scanner<'_> {
     }
 
     fn scan(mut self, tokens: &mut Vec<Token>) -> Result<(), Problem> {
+        let mut spaced_before = true;
         while let Some((start, character)) = self.characters.next() {
             let kind = match character {
-                ' ' | '\t' | '\r' => continue,
+                ' ' | '\t' | '\r' => {
+                    spaced_before = true;
+                    continue;
+                }
                 '/' => {
                     if self.next_if_eq('/') {
                         return self.check_comment(start);
@@ -162,6 +170,7 @@ impl Scanner<'_> {
                 }
                 '"' => self.read_text(start)?,
                 '$' => self.read_value_name(start)?,
+                '`' => self.read_source_name(start)?,
                 ':' => {
                     if self.next_if_eq(':') {
                         TokenKind::DoubleColon
@@ -203,7 +212,9 @@ impl Scanner<'_> {
             tokens.push(Token {
                 kind,
                 place: self.place(start, end),
+                spaced_before,
             });
+            spaced_before = false;
         }
         Ok(())
     }
@@ -272,6 +283,19 @@ impl Scanner<'_> {
             ));
         }
         Ok(TokenKind::ValueName(name))
+    }
+
+    /// `` `text` ``: a named source (D126).
+    fn read_source_name(&mut self, start: usize) -> Result<TokenKind, Problem> {
+        let name = self.read_name(String::new());
+        if name.is_empty() || !self.next_if_eq('`') {
+            return Err(Problem::refused(
+                self.place_to_here(start),
+                "a backtick that doesn't enclose a name",
+                "a named source is a name between backticks, `` `text` `` (D126)",
+            ));
+        }
+        Ok(TokenKind::SourceName(name))
     }
 
     fn read_integer(&mut self, start: usize, first: char) -> Result<TokenKind, Problem> {
@@ -346,6 +370,7 @@ pub(crate) fn describe(kind: &TokenKind) -> String {
     match kind {
         TokenKind::Word(word) => format!("`{word}`"),
         TokenKind::ValueName(name) => format!("`${name}`"),
+        TokenKind::SourceName(name) => format!("`` `{name}` ``"),
         TokenKind::Integer(number) => format!("the number {number}"),
         TokenKind::Text(_) => "text".to_owned(),
         TokenKind::Colon => "`:`".to_owned(),

@@ -1,0 +1,15 @@
+// trace D49
+// trace D80
+// expect: refused at line 9
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn pick [$a: Given reading] -> Lend from $a reading: // here
+    return Lend $a;
+end fn pick
+
+fn.main [] -> void:
+    return void;
+end fn.main

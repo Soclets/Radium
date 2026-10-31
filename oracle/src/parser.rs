@@ -8,8 +8,8 @@ use crate::ast::{
     Argument, Bounds, Branch, Call, CallTarget, Case, CaseBinding, Changeability, Expression,
     ExpressionKind, Field, FieldValue, Function, Handoff, Holder, Holding, Index, LabelEntry,
     Labels, LoopRange, LoopSource, MatchCase, Operator, Parameter, ParameterDefault, Program,
-    RangeEnd, RemainderRule, Rounding, Statement, StatementKind, Step, StructDefinition, Target,
-    TypeSpec, UnionDefinition,
+    RangeEnd, RemainderRule, Rounding, Source, SourceDeclaration, SourceFill, Statement,
+    StatementKind, Step, StructDefinition, Target, TypeSpec, UnionDefinition,
 };
 use crate::lexer::{Token, TokenKind, describe};
 use crate::outcome::{Place, Problem};
@@ -900,6 +900,7 @@ impl Parser {
             )?
         };
         let place = self.span_from(start);
+        let sources = self.source_group()?;
         self.expect(
             &TokenKind::OpenBracket,
             "`[` before the parameters",
@@ -948,6 +949,7 @@ impl Parser {
             place,
             pure,
             is_main,
+            sources,
             parameters,
             result,
             labels: top.labels,
@@ -1252,32 +1254,236 @@ impl Parser {
                 "short forms are written in full unless they save 4 or more letters (D94)",
             )
             .fix("`string`")),
-            "array" => self.array_type(),
+            "array" => self.array_type(start),
+            "Lend" => self.borrow_type(start),
             other if is_radium_word(other) => Err(Problem::refused(
                 start,
                 format!("`{other}` isn't a type"),
-                "a type is `int[…]`, `bool`, `array[…]` or a declared `struct` or `union.tagged` (D58, D59, D70)",
+                "a type is `int[…]`, `bool`, `array<…>[…]`, a stored borrow or a declared `struct` or `union.tagged` (D58, D59, D70, D126)",
             )),
-            other => Ok(TypeSpec::Named(other.to_owned())),
+            other => {
+                let fills = if self.opens_angle() {
+                    self.source_fills()?
+                } else {
+                    Vec::new()
+                };
+                Ok(TypeSpec::Named {
+                    name: other.to_owned(),
+                    fills,
+                })
+            }
         }
     }
 
-    /// `array[element, length: N]` (D70).
-    fn array_type(&mut self) -> Result<TypeSpec, Problem> {
+    /// Whether the current token is `<` opening a bracket: no space after it (D138).
+    fn opens_angle(&self) -> bool {
+        self.at(&TokenKind::Less)
+            && self
+                .tokens
+                .get(self.position.saturating_add(1))
+                .is_some_and(|token| !token.spaced_before)
+    }
+
+    /// Reads the `>` closing a `< >` bracket, which has no space before it (D138).
+    fn close_angle(&mut self, why: &str) -> Result<(), Problem> {
+        if self.at(&TokenKind::Greater) && self.current().is_some_and(|token| token.spaced_before) {
+            return Err(Problem::refused(
+                self.place(),
+                "a space before the `>` closing `< >`",
+                "a closing `>` has no space before it; with spaces on each side it is a comparison (D137, D138)",
+            ));
+        }
+        self.expect(&TokenKind::Greater, "`>` closing the `< >`", why)
+    }
+
+    /// `` <`text`, `table`: lasts_at_least `text`> `` after a struct's or function's name (D126, D127, D136, D138).
+    fn source_group(&mut self) -> Result<Vec<SourceDeclaration>, Problem> {
+        let mut sources = Vec::new();
+        if !self.at(&TokenKind::Less) {
+            return Ok(sources);
+        }
+        if !self.opens_angle() {
+            return Err(Problem::refused(
+                self.place(),
+                "a space after the `<` opening `< >`",
+                "an opening `<` has no space after it (D138)",
+            ));
+        }
+        self.advance();
+        loop {
+            let start = self.place();
+            let Some(TokenKind::SourceName(name)) = self.kind().cloned() else {
+                return Err(Problem::not_built(
+                    start,
+                    "placeholders such as `?T` in a `< >` group (D69, D136)",
+                ));
+            };
+            self.advance();
+            let mut lasts_at_least = Vec::new();
+            if self.eat(&TokenKind::Colon) {
+                loop {
+                    let rule_start = self.place();
+                    self.expect_word(
+                        "lasts_at_least",
+                        "a source's rule is `lasts_at_least` and another source (D127)",
+                    )?;
+                    let Some(TokenKind::SourceName(other)) = self.kind().cloned() else {
+                        return Err(self.expected(
+                            "a named source after `lasts_at_least`",
+                            "a source lasts at least as long as another named source (D127)",
+                        ));
+                    };
+                    self.advance();
+                    lasts_at_least.push((other, self.span_from(rule_start)));
+                    if !self.eat_word("and") {
+                        break;
+                    }
+                }
+            }
+            sources.push(SourceDeclaration {
+                name,
+                place: self.span_from(start),
+                lasts_at_least,
+            });
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.close_angle("a group of sources closes with `>` (D138)")?;
+        Ok(sources)
+    }
+
+    /// `` <`text`: $article, `table`: <$a, $b>> `` after a struct's name in a type (D126, D138).
+    fn source_fills(&mut self) -> Result<Vec<SourceFill>, Problem> {
+        self.advance();
+        let mut fills = Vec::new();
+        loop {
+            let Some(TokenKind::SourceName(name)) = self.kind().cloned() else {
+                return Err(Problem::not_built(
+                    self.place(),
+                    "filling in a placeholder's type in `< >` (D69, D138)",
+                ));
+            };
+            self.advance();
+            self.expect(
+                &TokenKind::Colon,
+                "`:` and where the source comes from",
+                "a type fills in its sources with `:` (D126)",
+            )?;
+            let sources = self.sources()?;
+            fills.push(SourceFill { name, sources });
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.close_angle("a type's sources close with `>` (D138)")?;
+        Ok(fills)
+    }
+
+    /// One source, or several in `< >`: `$article`, `` `text` ``, `program`, `<$x, $y>` (D49, D126, D127, D138).
+    fn sources(&mut self) -> Result<Vec<Source>, Problem> {
+        if self.at(&TokenKind::OpenBracket) {
+            return Err(Problem::refused(
+                self.place(),
+                "several sources in `[ ]`",
+                "sources go in `< >`; `[ ]` is for values (D138)",
+            )
+            .fix("`<$x, $y>`"));
+        }
+        if !self.at(&TokenKind::Less) {
+            return Ok(vec![self.source()?]);
+        }
+        if !self.opens_angle() {
+            return Err(Problem::refused(
+                self.place(),
+                "a space after the `<` opening `< >`",
+                "an opening `<` has no space after it (D138)",
+            ));
+        }
+        self.advance();
+        let mut sources = Vec::new();
+        loop {
+            sources.push(self.source()?);
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.close_angle("a list of sources closes with `>` (D138)")?;
+        Ok(sources)
+    }
+
+    fn source(&mut self) -> Result<Source, Problem> {
+        let source = match self.kind() {
+            Some(TokenKind::ValueName(name)) => Source::Value(name.clone()),
+            Some(TokenKind::SourceName(name)) => Source::Named(name.clone()),
+            Some(TokenKind::Word(word)) if word == "program" => Source::Program,
+            _ => {
+                return Err(self.expected(
+                    "where the borrow comes from: a `$name`, a named source or `program`",
+                    "a borrow names its source (D49, D126, D127)",
+                ));
+            }
+        };
+        self.advance();
+        Ok(source)
+    }
+
+    /// `Lend from $x T`, `Lend from <$x, $y> T`, `Lend.mut from …` (D49, D126, D127, D135).
+    fn borrow_type(&mut self, start: Place) -> Result<TypeSpec, Problem> {
+        let exclusive = if self.eat(&TokenKind::Dot) {
+            let narrowing =
+                self.take_word("`mut` after `Lend.`", "`Lend` narrows to `Lend.mut` (D80)")?;
+            if narrowing != "mut" {
+                return Err(Problem::refused(
+                    self.span_from(start),
+                    format!("`Lend.{narrowing}` isn't a kind of borrow"),
+                    "a borrow is `Lend` or `Lend.mut` (D80)",
+                ));
+            }
+            true
+        } else {
+            false
+        };
+        self.expect_word(
+            "from",
+            "a stored borrow names its source: `Lend from $x` (D49, D126)",
+        )?;
+        let sources = self.sources()?;
+        let inner = self.type_spec()?;
+        Ok(TypeSpec::Borrow {
+            exclusive,
+            sources,
+            inner: Box::new(inner),
+        })
+    }
+
+    /// `array<element>[length: N]` (D70, D138).
+    fn array_type(&mut self, start: Place) -> Result<TypeSpec, Problem> {
+        if self.at(&TokenKind::OpenBracket) {
+            return Err(Problem::refused(
+                self.span_from(start),
+                "an array's element type in `[ ]`",
+                "a type goes in `< >` and a value in `[ ]`, so an array type is `array<element>[length: N]` (D138)",
+            )
+            .fix("`array<element>[length: N]`"));
+        }
+        if !self.opens_angle() {
+            return Err(self.expected(
+                "`<` and the element type after `array`",
+                "an array type is `array<element>[length: N]` (D70, D138)",
+            ));
+        }
+        self.advance();
+        let element = self.type_spec()?;
+        self.close_angle("an array's element type closes with `>` (D138)")?;
         self.expect(
             &TokenKind::OpenBracket,
-            "`[` after `array`",
-            "an array's element and length go in `[ ]` (D50, D70)",
-        )?;
-        let element = self.type_spec()?;
-        self.expect(
-            &TokenKind::Comma,
-            "`,` and then `length:`",
-            "an array type is `array[element, length: N]` (D70)",
+            "`[` and then `length:`",
+            "an array type is `array<element>[length: N]` (D70, D138)",
         )?;
         self.expect_word(
             "length",
-            "an array type is `array[element, length: N]` (D70)",
+            "an array type is `array<element>[length: N]` (D70, D138)",
         )?;
         self.expect(
             &TokenKind::Colon,
@@ -1295,7 +1501,7 @@ impl Parser {
         self.expect(
             &TokenKind::CloseBracket,
             "`]` closing the array type",
-            "an array type is `array[element, length: N]` (D70)",
+            "an array type is `array<element>[length: N]` (D70, D138)",
         )?;
         if length.sign() != Sign::Plus {
             return Err(Problem::refused(
@@ -1509,10 +1715,17 @@ impl Parser {
     }
 
     fn comparison(&mut self) -> Result<Expression, Problem> {
+        let start = self.place();
         let left = self.additive()?;
+        if self.at_word("lasts_at_least") {
+            return self.lasts_at_least(start, left);
+        }
         let Some(operator) = self.comparison_operator() else {
             return Ok(left);
         };
+        if matches!(operator, Operator::Less | Operator::Greater) {
+            self.refuse_unspaced_comparison()?;
+        }
         self.advance();
         let right = self.additive()?;
         if self.comparison_operator().is_some() {
@@ -1522,6 +1735,43 @@ impl Parser {
             ));
         }
         Ok(binary(operator, left, right))
+    }
+
+    /// `<` and `>` as comparisons have a space on each side (D137).
+    fn refuse_unspaced_comparison(&self) -> Result<(), Problem> {
+        let spaced_before = self.current().is_some_and(|token| token.spaced_before);
+        let spaced_after = self
+            .tokens
+            .get(self.position.saturating_add(1))
+            .is_none_or(|token| token.spaced_before);
+        if spaced_before && spaced_after {
+            return Ok(());
+        }
+        Err(Problem::refused(
+            self.place(),
+            format!(
+                "{} without a space on each side",
+                describe(self.kind().unwrap_or(&TokenKind::Less))
+            ),
+            "a comparison has a space on each side; `< >` with no space inside are brackets (D137, D138)",
+        ))
+    }
+
+    /// `$list lasts_at_least $article`, which a `requires` states for its parameters (D132).
+    fn lasts_at_least(&mut self, start: Place, left: Expression) -> Result<Expression, Problem> {
+        let ExpressionKind::Value(longer) = left.kind else {
+            return Err(Problem::refused(
+                left.place,
+                "`lasts_at_least` after something that isn't a `$name`",
+                "`lasts_at_least` compares where borrows come from: `$list lasts_at_least $article` (D132)",
+            ));
+        };
+        self.advance();
+        let shorter = self.take_value_name("a parameter's `$name` after `lasts_at_least`")?;
+        Ok(Expression {
+            place: self.span_from(start),
+            kind: ExpressionKind::LastsAtLeast { longer, shorter },
+        })
     }
 
     fn comparison_operator(&self) -> Option<Operator> {
@@ -2072,6 +2322,7 @@ impl Parser {
             "`struct` is followed by its name (D58)",
         )?;
         let place = self.span_from(start);
+        let sources = self.source_group()?;
         self.expect(
             &TokenKind::Colon,
             "`:` ending the struct's header",
@@ -2099,6 +2350,7 @@ impl Parser {
         Ok(StructDefinition {
             name,
             place,
+            sources,
             must_give,
             fields,
         })

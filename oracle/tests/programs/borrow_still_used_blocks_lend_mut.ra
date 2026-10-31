@@ -1,0 +1,20 @@
+// trace D129
+// trace D5
+// expect: refused at line 17
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn warm [$r: Lent.mut reading] -> void:
+    $r.celsius = $r.celsius + 1;
+    return void;
+end fn warm
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 0, celsius = 20];
+    var $v: Lend from $r reading = Lend $r;
+    warm(Lend.mut $r); // here
+    std::print($v.celsius, newline);
+    return void;
+end fn.main

@@ -1,0 +1,19 @@
+// trace D133
+// trace D136
+// expect: refused at line 13
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+struct view <`text`>:
+    shown: Lend from `text` reading;
+end struct view
+
+fn shown_celsius <`t`, `u`> [$v: view<`text`: `t`>] -> int[min: -40, max: 125]: // here
+    return $v.shown.celsius;
+end fn shown_celsius
+
+fn.main [] -> void:
+    return void;
+end fn.main

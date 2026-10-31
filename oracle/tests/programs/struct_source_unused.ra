@@ -1,0 +1,14 @@
+// trace D133
+// expect: refused at line 8
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+struct view <`text`, `extra`>: // here
+    shown: Lend from `text` reading;
+end struct view
+
+fn.main [] -> void:
+    return void;
+end fn.main

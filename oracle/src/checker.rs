@@ -2,7 +2,10 @@
 //! Refuses what the compiler would refuse, before anything runs: names and kinds of values, changes to values that
 //! may not change (D30, D31, D58), conditions that aren't `bool` (D60), `break` outside a loop (D77), `return` and
 //! `result` (D53, D95), building and reading structs and unions and `match` (D58, D59, D72), ownership (D80, D84,
-//! D91, D92), and calls: labels, defaults, `my.` and `fn.pure` (D43, D51, D54).
+//! D91, D92), stored borrows (D125–D139, in `borrows`), and calls: labels, defaults, `my.` and `fn.pure` (D43, D51,
+//! D54).
+
+mod borrows;
 
 use std::collections::HashMap;
 
@@ -17,6 +20,7 @@ use crate::binding::{Binding, bind_arguments};
 use crate::outcome::{Place, Problem};
 use crate::rules::{is_radium_word, range_can_end};
 use crate::types::Types;
+use borrows::{Destination, Position};
 
 /// Checks a whole program.
 pub(crate) fn check(program: &Program) -> Result<(), Problem> {
@@ -36,6 +40,8 @@ pub(crate) fn check(program: &Program) -> Result<(), Problem> {
         scopes: Vec::new(),
         loops: Vec::new(),
         function: None,
+        rest: Vec::new(),
+        loop_bodies: Vec::new(),
     };
     for function in &program.functions {
         checker.function_definition(function)?;
@@ -111,6 +117,8 @@ struct Known {
     place: Place,
     changed: bool,
     given: Option<Given>,
+    /// Its full type, with where its borrows come from (D126); `None` where only its kind is known.
+    type_spec: Option<TypeSpec>,
 }
 
 /// Where an expression sits. Contracts may call only `fn.pure` functions (D51); `old[…]` and `result` belong to an
@@ -137,6 +145,10 @@ struct Checker<'program> {
     scopes: Scopes,
     loops: Vec<Loop>,
     function: Option<&'program Function>,
+    /// For each block being checked, the statements after the current one, and the block's scope (D129).
+    rest: Vec<(&'program [Statement], usize)>,
+    /// The loops being checked, with the scope their body opens (D129).
+    loop_bodies: Vec<(&'program [Statement], usize)>,
 }
 
 // Functions, blocks and the paths through them.
@@ -147,6 +159,7 @@ impl<'program> Checker<'program> {
         for parameter in &function.parameters {
             self.parameter(parameter)?;
         }
+        self.function_sources(function)?;
         if let Some(result) = &function.result {
             self.types.check_type(result, function.place)?;
             if self.types.is_must_give(&result.kind()) {
@@ -158,6 +171,10 @@ impl<'program> Checker<'program> {
         }
         labels_and_defaults(function)?;
         for condition in &function.requires {
+            // trace D132: a `lasts_at_least` line is checked with the function's sources.
+            if matches!(condition.kind, ExpressionKind::LastsAtLeast { .. }) {
+                continue;
+            }
             self.condition(condition, Context::Contract, "a `requires`")?;
         }
         for condition in &function.ensures {
@@ -213,13 +230,23 @@ impl<'program> Checker<'program> {
             kind,
             parameter.place,
         );
+        if let Some(known) = self.lookup_mut(&parameter.name) {
+            known.type_spec = Some(parameter.type_spec.clone());
+        }
         Ok(())
     }
 
     fn block(&mut self, statements: &'program [Statement]) -> Result<(), Problem> {
         self.scopes.push(HashMap::new());
-        for statement in statements {
-            self.statement(statement)?;
+        let scope_index = self.scopes.len().saturating_sub(1);
+        for (index, statement) in statements.iter().enumerate() {
+            let rest = statements
+                .get(index.saturating_add(1)..)
+                .unwrap_or_default();
+            self.rest.push((rest, scope_index));
+            let result = self.statement(statement);
+            self.rest.pop();
+            result?;
         }
         self.pop_scope()
     }
@@ -420,7 +447,9 @@ impl<'program> Checker<'program> {
             name: loop_name.cloned(),
             depth: self.scopes.len(),
         });
+        self.loop_bodies.push((body, self.scopes.len()));
         let result = self.block(body);
+        self.loop_bodies.pop();
         self.loops.pop();
         result?;
         // A value from outside the loop handed off inside it would be handed off again on the next trip.
@@ -520,6 +549,7 @@ impl<'program> Checker<'program> {
             }
             (Some(result), Some(value)) => {
                 self.value_into(value, &result.kind(), Context::Plain, Some(header))?;
+                self.borrow_into(value, result, &Destination::Result)?;
             }
         }
         for scope in &self.scopes {
@@ -541,13 +571,16 @@ impl<'program> Checker<'program> {
         type_spec: Option<&TypeSpec>,
         value: &Expression,
     ) -> Result<(), Problem> {
-        let value_kind = if let Some(type_spec) = type_spec {
+        let (value_kind, full_type) = if let Some(type_spec) = type_spec {
             self.types.check_type(type_spec, place)?;
+            self.written_type(type_spec, place, Position::Local)?;
             let kind = type_spec.kind();
             self.value_into(value, &kind, Context::Plain, None)?;
-            kind
+            self.borrow_into(value, type_spec, &Destination::Name(name))?;
+            (kind, Some(type_spec.clone()))
         } else {
-            self.expression(value, Context::Plain)?
+            let kind = self.expression(value, Context::Plain)?;
+            (kind, self.value_type(value)?)
         };
         if holder == Holder::Const && !value_kind.is_copied() {
             return Err(Problem::not_decided(
@@ -576,6 +609,9 @@ impl<'program> Checker<'program> {
             Holder::Const => Role::Const,
         };
         self.declare(name, role, value_kind, place);
+        if let Some(known) = self.lookup_mut(name) {
+            known.type_spec = full_type;
+        }
         Ok(())
     }
 
@@ -624,6 +660,16 @@ impl<'program> Checker<'program> {
         if let Some((why, fact)) = refusal {
             return Err(Problem::refused(place, what, why).because(known.place, fact));
         }
+        let held = Self::type_of(&known);
+        if self.through_borrow(&held, &target.steps) {
+            return Err(Problem::refused(
+                place,
+                format!("this changes something `${name}` only borrows with `Lend`"),
+                "a `Lend` gives read-only access (D80, D135)",
+            )
+            .because(known.place, format!("`${name}` is declared here")));
+        }
+        self.refuse_while_lent(name, place, "changes", &[])?;
         if target.steps.is_empty() {
             if matches!(
                 known.role,
@@ -650,7 +696,11 @@ impl<'program> Checker<'program> {
             &target_kind,
             Context::Plain,
             Some((known.place, format!("`${name}` is declared here"))),
-        )
+        )?;
+        match self.path_type(&held, &target.steps) {
+            Some(wanted) => self.borrow_into(value, &wanted, &Destination::Name(name)),
+            None => Ok(()),
+        }
     }
 
     /// Checks a value going where `wanted` is expected. An array value is bare `[…]` there and must fit, and
@@ -749,19 +799,18 @@ impl<'program> Checker<'program> {
             return Err(with_because(problem, because));
         }
         match handoff {
-            Handoff::Lend | Handoff::LendMut => Err(Problem::not_decided(
-                place,
-                "storing a borrow in a name, a result, a field or an item, which needs lifetimes (D49, D125)",
-            )),
+            Handoff::LendMut => Err(Problem::not_built(place, "storing a `Lend.mut` (D135)")),
             Handoff::Copy if self.types.is_must_give(&known.kind) => Err(Problem::refused(
                 place,
                 format!("`${name}` can't be copied"),
                 "a `must_Give` value is handed off exactly once, so there is never a second one (D84)",
             )
             .because(known.place, format!("`${name}` is declared here"))),
-            Handoff::Copy => Ok(()),
+            // trace D126: where a borrow may go is checked with its full type (`borrow_into`).
+            Handoff::Copy | Handoff::Lend => Ok(()),
             Handoff::Give => {
                 refuse_giving_what_is_lent(place, name, &known)?;
+                self.refuse_while_lent(name, place, "is given away", &[])?;
                 if let Some(known) = self.lookup_mut(name) {
                     known.given = Some(Given::Yes(place));
                 }
@@ -1124,8 +1173,16 @@ impl Checker<'_> {
             let Some(argument) = call.arguments.get(index) else {
                 continue;
             };
-            self.argument(parameter, argument, context, &mut lent_to_change)?;
+            let others: Vec<&Expression> = call
+                .arguments
+                .iter()
+                .filter(|other| !std::ptr::eq(*other, argument))
+                .map(|other| &other.value)
+                .collect();
+            self.argument(parameter, argument, context, &mut lent_to_change, &others)?;
         }
+        // trace D132: the function's `lasts_at_least` facts and D139's fresh values are checked with the result.
+        self.call_result(call)?;
         Ok(function.result.as_ref().map(TypeSpec::kind))
     }
 
@@ -1178,6 +1235,7 @@ impl Checker<'_> {
         argument: &'call Argument,
         context: Context,
         lent_to_change: &mut Vec<(&'call str, Place)>,
+        others: &[&Expression],
     ) -> Result<(), Problem> {
         let wanted = parameter.type_spec.kind();
         let declared = (
@@ -1240,21 +1298,12 @@ impl Checker<'_> {
         }
         match handoff {
             Handoff::LendMut => {
-                if !known.role.may_change() {
-                    return Err(Problem::refused(
-                        argument.place,
-                        format!("`${name}` can't be lent to change"),
-                        "`Lend.mut` lends a value that may change; this one can't (D30, D31, D80)",
-                    )
-                    .because(known.place, format!("`${name}` is declared here")));
-                }
+                self.lend_to_change(argument, name, &known, others)?;
                 lent_to_change.push((name.as_str(), argument.place));
-                if let Some(known) = self.lookup_mut(name) {
-                    known.changed = true;
-                }
             }
             Handoff::Give => {
                 refuse_giving_what_is_lent(argument.place, name, &known)?;
+                self.refuse_while_lent(name, argument.place, "is given away", others)?;
                 if let Some(known) = self.lookup_mut(name) {
                     known.given = Some(Given::Yes(argument.place));
                 }
@@ -1272,6 +1321,41 @@ impl Checker<'_> {
                     .because(other.1, "it is lent to change here"));
                 }
             }
+        }
+        Ok(())
+    }
+}
+
+impl Checker<'_> {
+    /// `Lend.mut $name` in a call (D80, D135, D129).
+    fn lend_to_change(
+        &mut self,
+        argument: &Argument,
+        name: &str,
+        known: &Known,
+        others: &[&Expression],
+    ) -> Result<(), Problem> {
+        if !known.role.may_change() {
+            return Err(Problem::refused(
+                argument.place,
+                format!("`${name}` can't be lent to change"),
+                "`Lend.mut` lends a value that may change; this one can't (D30, D31, D80)",
+            )
+            .because(known.place, format!("`${name}` is declared here")));
+        }
+        if matches!(known.type_spec, Some(TypeSpec::Borrow { .. })) {
+            return Err(Problem::refused(
+                argument.place,
+                format!(
+                    "`${name}` only borrows its value with `Lend`, so it can't lend it to change"
+                ),
+                "a `Lend` gives read-only access (D80, D135)",
+            )
+            .because(known.place, format!("`${name}` is declared here")));
+        }
+        self.refuse_while_lent(name, argument.place, "is lent to change", others)?;
+        if let Some(known) = self.lookup_mut(name) {
+            known.changed = true;
         }
         Ok(())
     }
@@ -1351,6 +1435,14 @@ fn refuse_giving_what_is_lent(place: Place, name: &str, known: &Known) -> Result
             "`Give` hands off what is owned; a lent value can be copied, not given (D80, D91, D125)",
         )
         .because(known.place, format!("`${name}` is a lent parameter")));
+    }
+    if matches!(known.type_spec, Some(TypeSpec::Borrow { .. })) {
+        return Err(Problem::refused(
+            place,
+            format!("`${name}` only borrows its value, so it can't give it away"),
+            "`Give` hands off what is owned; a borrow can be copied, not given (D80, D125)",
+        )
+        .because(known.place, format!("`${name}` is declared here")));
     }
     Ok(())
 }
@@ -1499,6 +1591,11 @@ impl Checker<'_> {
                 let base_kind = self.place_kind(base, context)?;
                 self.item_kind(&base_kind, index)
             }
+            ExpressionKind::LastsAtLeast { .. } => Err(Problem::refused(
+                place,
+                "`lasts_at_least` inside a value",
+                "`lasts_at_least` is a `requires` line on its own, about where borrows come from (D132)",
+            )),
             ExpressionKind::Handoff { handoff, .. } => Err(Problem::refused(
                 place,
                 format!("`{}` in the middle of a value", handoff.word()),
@@ -1647,6 +1744,9 @@ impl Checker<'_> {
                     missing.name
                 ),
             ));
+        }
+        if case.is_none() {
+            self.build_fills(type_name, values)?;
         }
         Ok(ValueKind::Named(type_name.to_owned()))
     }
@@ -1800,7 +1900,8 @@ impl Checker<'_> {
             | ExpressionKind::Field { .. }
             | ExpressionKind::Array { .. }
             | ExpressionKind::Item { .. }
-            | ExpressionKind::Handoff { .. } => false,
+            | ExpressionKind::Handoff { .. }
+            | ExpressionKind::LastsAtLeast { .. } => false,
         }
     }
 
@@ -1824,6 +1925,7 @@ impl Checker<'_> {
             place,
             changed: false,
             given: None,
+            type_spec: None,
         };
         if let Some(scope) = self.scopes.last_mut() {
             scope.insert(name.to_owned(), known);

@@ -1,7 +1,7 @@
 // trace D70
 // expect: runs
 // output: ready
-fn total [$readings: array[int[min: 0, max: 255], length: 16]] -> void:
+fn total [$readings: array<int[min: 0, max: 255]>[length: 16]] -> void:
     return void;
 end fn total
 

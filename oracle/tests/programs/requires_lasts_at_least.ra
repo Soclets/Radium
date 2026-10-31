@@ -1,0 +1,26 @@
+// trace D132
+// trace D126
+// expect: runs
+// output: 21
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+struct index <`text`, `table`: lasts_at_least `text`>:
+    words: Lend from `text` reading;
+    lookup: Lend from `table` reading;
+end struct index
+
+fn build [$article: reading, $list: reading] -> index<`text`: $article, `table`: $list>:
+    requires $list lasts_at_least $article;
+    return index[words = Lend $article, lookup = Lend $list];
+end fn build
+
+fn.main [] -> void:
+    var $l: reading = reading[time = 0, celsius = 20];
+    var $a: reading = reading[time = 1, celsius = 21];
+    var $i: index<`text`: $a, `table`: $l> = build(Lend $a, Lend $l);
+    std::print($i.words.celsius, newline);
+    return void;
+end fn.main

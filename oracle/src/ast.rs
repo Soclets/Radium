@@ -19,6 +19,8 @@ pub(crate) struct Program {
 pub(crate) struct StructDefinition {
     pub(crate) name: String,
     pub(crate) place: Place,
+    /// The sources its borrows come from, `` <`text`> `` (D126, D138).
+    pub(crate) sources: Vec<SourceDeclaration>,
     /// `must_Give`: handed off with `Give` exactly once (D5, D84).
     pub(crate) must_give: bool,
     pub(crate) fields: Vec<Field>,
@@ -59,6 +61,8 @@ pub(crate) struct Function {
     pub(crate) pure: bool,
     /// `fn.main`: where the program starts; nothing may call it (D101).
     pub(crate) is_main: bool,
+    /// Its own named sources, for borrows inside its parameters (D136).
+    pub(crate) sources: Vec<SourceDeclaration>,
     pub(crate) parameters: Vec<Parameter>,
     /// The type after `->` (D52, D98); `None` for `-> void` (D99).
     pub(crate) result: Option<TypeSpec>,
@@ -147,6 +151,44 @@ pub(crate) struct ParameterDefault {
     pub(crate) value: Expression,
 }
 
+/// One named source a struct or function declares, with the sources it lasts at least as long as:
+/// `` `table`: lasts_at_least `text` `` (D126, D127, D136).
+#[derive(Debug)]
+pub(crate) struct SourceDeclaration {
+    pub(crate) name: String,
+    pub(crate) place: Place,
+    pub(crate) lasts_at_least: Vec<(String, Place)>,
+}
+
+/// Where a borrow comes from (D49, D126, D127).
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub(crate) enum Source {
+    /// A value's `$name`: a parameter, or a name in scope.
+    Value(String),
+    /// A named source, `` `text` ``, declared by a struct or a function.
+    Named(String),
+    /// `program`, which lasts until the program ends (D127).
+    Program,
+}
+
+impl Source {
+    /// How it is written.
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Self::Value(name) => format!("`${name}`"),
+            Self::Named(name) => format!("`` `{name}` ``"),
+            Self::Program => "`program`".to_owned(),
+        }
+    }
+}
+
+/// One source of a struct filled in where the struct's type is written: `` `text`: $article `` (D126).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct SourceFill {
+    pub(crate) name: String,
+    pub(crate) sources: Vec<Source>,
+}
+
 /// The types the oracle reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TypeSpec {
@@ -154,12 +196,21 @@ pub(crate) enum TypeSpec {
     Integer(Bounds),
     /// `bool` (D60).
     Bool,
-    /// A `struct` or `union.tagged` the program declares (D58, D59).
-    Named(String),
-    /// `array[element, length: N]` (D70).
+    /// A `struct` or `union.tagged` the program declares (D58, D59), with its sources filled in (D126).
+    Named {
+        name: String,
+        fills: Vec<SourceFill>,
+    },
+    /// `array<element>[length: N]` (D70, D138).
     Array {
         element: Box<TypeSpec>,
         length: BigInt,
+    },
+    /// A stored borrow: `Lend from $x T`, `Lend from <$x, $y> T`, `Lend.mut from …` (D49, D126, D127, D135).
+    Borrow {
+        exclusive: bool,
+        sources: Vec<Source>,
+        inner: Box<TypeSpec>,
     },
 }
 
@@ -169,19 +220,29 @@ impl TypeSpec {
         match self {
             Self::Integer(_) => ValueKind::Integer,
             Self::Bool => ValueKind::Bool,
-            Self::Named(name) => ValueKind::Named(name.clone()),
+            Self::Named { name, .. } => ValueKind::Named(name.clone()),
             Self::Array { element, length } => ValueKind::Array {
                 element: Box::new(element.kind()),
                 length: length.clone(),
             },
+            // A borrow reads like the value it lends.
+            Self::Borrow { inner, .. } => inner.kind(),
+        }
+    }
+
+    /// The type of the value itself, seen through a borrow.
+    pub(crate) fn owned(&self) -> &Self {
+        match self {
+            Self::Borrow { inner, .. } => inner.owned(),
+            other => other,
         }
     }
 
     /// The integer bounds, for an integer type.
     pub(crate) fn bounds(&self) -> Option<&Bounds> {
-        match self {
+        match self.owned() {
             Self::Integer(bounds) => Some(bounds),
-            Self::Bool | Self::Named(_) | Self::Array { .. } => None,
+            _ => None,
         }
     }
 }
@@ -436,6 +497,11 @@ pub(crate) enum ExpressionKind {
     Item {
         base: Box<Expression>,
         index: Index,
+    },
+    /// `$list lasts_at_least $article`, only as a `requires` (D132).
+    LastsAtLeast {
+        longer: String,
+        shorter: String,
     },
     /// A whole value handed to a new holder: `Copy $a`, `Give $r` (D125).
     Handoff {

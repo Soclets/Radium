@@ -1,0 +1,19 @@
+// trace D126
+// trace D138
+// expect: runs
+// output: 20
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+struct view <`text`>:
+    shown: Lend from `text` reading;
+end struct view
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 0, celsius = 20];
+    var $w: view<`text`: $r> = view[shown = Lend $r];
+    std::print($w.shown.celsius, newline);
+    return void;
+end fn.main

@@ -1,0 +1,12 @@
+// trace D138
+// expect: refused at line 10
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+fn.main [] -> void:
+    var $a: reading = reading[time = 0, celsius = 20];
+    var $b: reading = reading[time = 1, celsius = 21];
+    var $v: Lend from [$a, $b] reading = Lend $a; // here
+    return void;
+end fn.main

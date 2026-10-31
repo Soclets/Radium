@@ -4,7 +4,7 @@
 // expect: runs
 // output: 20
 struct week:
-    rain: array[int[min: 0, max: 99], length: 3];
+    rain: array<int[min: 0, max: 99]>[length: 3];
 end struct week
 
 fn.main [] -> void:

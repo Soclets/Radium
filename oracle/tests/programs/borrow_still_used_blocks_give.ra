@@ -1,0 +1,19 @@
+// trace D129
+// trace D5
+// expect: refused at line 16
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn keep [$r: Given reading] -> void:
+    return void;
+end fn keep
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 0, celsius = 20];
+    var $v: Lend from $r reading = Lend $r;
+    keep(Give $r); // here
+    std::print($v.celsius, newline);
+    return void;
+end fn.main

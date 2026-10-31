@@ -86,12 +86,21 @@ The second slice adds `struct` with fields, building, `.immut` fields and fields
 off on every path (D5, D80, D84, D91, D92), with no hidden ownership: `=`, `return`, fields and items take `Give` or
 `Copy` (D125).
 
-**Not built yet:** `std::list` and the maps, failures and `otherwise`, function collections, generics, `decreases` on functions, `Lend from`, hex numbers.
+Stored borrows (D49, D125–D139): `Lend from $x T`, `Lend from <$x, $y> T` and `program`; structs and functions with
+named sources in `< >`, their `lasts_at_least` rules, and types that fill them in with `:`; a borrow only where its
+type names its source; a borrow ending at its last use, with its source unchanged until then; results that borrow
+from parameters, `requires $a lasts_at_least $b;`, and no borrow from a fresh value. Also the three brackets, with
+`array<element>[length: N]` (D138), and comparisons that need spaces (D137).
+
+**Not built yet:** `std::list` and the maps, failures and `otherwise`, function collections, generics (`?T`, also in a
+`< >` group), `decreases` on functions, storing a `Lend.mut` (D135), following a borrow's holder that is given a new
+borrow while its old source changes, hex numbers.
 
 **Not decided, so reported:** parameters for `fn.main`, and anything it gives back but `void` (D101); a bare `int`;
 text types (`string`); shadowing; `fails … exactly when`; shields; `invariant`/`assert` spellings; a way to throw a
 result away on purpose (D97); building a struct without every field; comparing or printing a whole struct, union or
-array; storing a borrow with `Lend` in a name, result, field or item (D49, D125); pulling a struct out of a `case`; going through items that are structs, unions or arrays; how a `must_Give` value's duty ends in the function that receives
+array; a parameter whose type is itself a stored borrow; a `union.tagged` case holding a borrow; a source said to
+last as long as itself; a value with no name where a `requires` compares sources; pulling a struct out of a `case`; going through items that are structs, unions or arrays; how a `must_Give` value's duty ends in the function that receives
 it; a `const` struct.
 
 ## Provisional readings
@@ -117,3 +126,13 @@ The oracle had to read these one way to run at all. None is a decision; each wai
 12. **A value pulled out by `case` doesn't change.**
 13. **`Lend.mut` hands the function a copy and takes the changed copy back** when the call ends. With nothing else
     allowed to use the value meanwhile (D5), that behaves the same as lending the value itself.
+14. **How long names last, for `lasts_at_least`** (D127, D132): of two names in view, the one declared first lasts at
+    least as long; a parameter outlasts every name inside its function; a function's own source outlasts those names
+    too; `program` outlasts everything. Two parameters compare only through `requires` lines.
+15. **A stored `Lend` holds a copy.** Since its source can't change while the borrow is used (D129), reading through it
+    gives the same values as reading the source.
+16. **Lending a borrow lends what it borrows**: `Lend $v`, where `$v` is `Lend from $r reading`, borrows from `$r`.
+    **`Copy` of a borrow is a value of its own**, with no borrow; `Copy` or `Give` of a struct holding borrows keeps
+    them.
+17. **A use is any later mention**: the borrow counts as used if its holder appears anywhere later in its blocks,
+    or anywhere in a loop around them that it was declared outside of, on any path, as Rust counts it.

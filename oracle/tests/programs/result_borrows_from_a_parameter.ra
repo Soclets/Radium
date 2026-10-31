@@ -1,0 +1,24 @@
+// trace D49
+// trace D127
+// trace D138
+// expect: runs
+// output: 21
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn warmer [$a: reading, $b: reading] -> Lend from <$a, $b> reading:
+    if $a.celsius > $b.celsius:
+        return Lend $a;
+    end if
+    return Lend $b;
+end fn warmer
+
+fn.main [] -> void:
+    var $x: reading = reading[time = 0, celsius = 20];
+    var $y: reading = reading[time = 1, celsius = 21];
+    var $w: Lend from <$x, $y> reading = warmer(Lend $x, Lend $y);
+    std::print($w.celsius, newline);
+    return void;
+end fn.main

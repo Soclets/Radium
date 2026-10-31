@@ -848,7 +848,11 @@ impl<'program> Machine<'program> {
                 case,
                 fields,
             } => self.build(type_name, case.as_deref(), fields, frame),
+            // trace D132: which source lasts longer is checked before the program runs.
+            ExpressionKind::LastsAtLeast { .. } => Ok(Value::Bool(true)),
             // trace D125: the hand-off itself is checked before the program runs; here the value is just passed on.
+            // trace D126: a stored `Lend` reads like its value, and its source can't change while it is used (D129),
+            // so a copy behaves the same.
             ExpressionKind::Handoff { name, .. } => frame
                 .lookup(name)
                 .map(|slot| slot.value.clone())
