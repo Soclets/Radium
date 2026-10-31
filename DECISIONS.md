@@ -2244,8 +2244,19 @@ after it, and a closing `>` has no space before it; a comparison has a space on 
 `holder< int >` are refused.
 
 Design claude found D127's `Lend from [$x, $y]` puts sources in `[ ]`, against the test above; owner: "yes" (typed
-"yedx"). **"From either" is respelled `Lend from <$x, $y>`.** Still to check against the new rule: an interface's associated
-type (`walkable [item = ?E]`, D69).
+"yedx"). **"From either" is respelled `Lend from <$x, $y>`.**
+
+Design claude checked D69's interfaces against the rule; owner: "yes". **An interface's placeholder and a type slot
+filled at a join go in `< >`, and a type slot is filled with `:`**, as a type fills in its sources (D126); `=` stays
+for setting a value's field:
+
+```
+interface ordered <?T>:
+std::list<?E> satisfies walkable<item: ?E>;
+```
+
+`type item;` inside the interface is unchanged. Inside `< >`, `:` attaches a rule where something is declared
+(`?T: ordered`, `` `table`: lasts_at_least `text` ``) and fills in where it is used (`item: ?E`, `` `text`: $a ``).
 
 ## D139 — No borrow from a fresh value (2026-10-31)
 
@@ -2259,6 +2270,70 @@ var $w: Lend from <$r> reading = warmer(Lend $r, reading[time = 0, celsius = 30]
 A fresh value has no holder (D125), so it would end with its line while the borrow lasts, and no type could name it.
 Keeping it alive instead (Rust's temporary lifetime extension) would be a hidden holder. A fresh value can still go
 into a lent parameter when nothing borrows from it.
+
+## D140 — A value lasts until the end of its block (2026-10-31)
+
+Proposed by design claude for the oracle's provisional reading 14, owner: "yes". **A value lasts until the end of the
+block it is declared in**; names in the same block end together, or the later one first. So of two names in view, the
+one declared first lasts at least as long; a parameter, held by the caller, outlasts every name inside the function;
+`program` outlasts everything. This is about values: a borrow still ends at its last use (D129), which is what lets
+its source change. A value ending at its last use instead would make when it ends invisible, and `lasts_at_least`
+(D127, D132) couldn't be read off the code.
+
+## D141 — The oracle may run borrows as copies (2026-10-31)
+
+Proposed by design claude, owner: "yes" (after asking how many more lines real references would take: an estimated 300
+to 500, about a third of the interpreter). **Readings 13 and 15 are oracle methods, not open questions**: the oracle
+runs `Lend.mut` as copy-in, copy-out and a stored `Lend` as a copy. Radium's meaning is unchanged, a borrow reaches its
+source itself (D80, D126), and while a borrow is used its source doesn't change (D5, D129), so the copy gives the same
+results. If D129 were ever loosened, the oracle's tests would show the difference. **A way of running that can't
+differ from the decided meaning is an oracle method**, listed apart from the provisional readings.
+
+## D142 — Lending a `Lend` passes on its source (2026-10-31)
+
+Proposed by design claude for the oracle's provisional reading 16, owner (after asking about safety, speed and
+clarity): "yes". **Lending a stored `Lend` borrows from what it borrows from**:
+
+```
+var $v: Lend from $r reading = Lend $r;
+var $w: Lend from $r reading = Lend $v;     // from $r, not $v
+```
+
+As safe as naming `$v` and no slower (sources exist only while compiling), and clearer: the type names what can't
+change. A function can return `Lend $view` for a local `$view` that borrows a parameter. As in Rust. **Lending through
+a stored `Lend.mut` is open**: there, tying the new borrow to the `Lend.mut` holder (as Rust does) would also stop
+the holder changing the source meanwhile; it waits for D135 to be built.
+
+## D143 — A borrow stands for the value it reaches (2026-10-31)
+
+Proposed by design claude for the rest of the oracle's provisional reading 16, owner (after asking about clarity,
+another word, and whether it is consistent): "yes". **Every use of a stored `Lend` goes through to the value it
+reaches**: `$v.celsius` reads the source's field, `Lend $v` borrows from the source (D142), **`Copy $v` gives a value
+of its own** (`var $c: reading = Copy $v;`, locking nothing), and `Give $v` is refused because the value isn't `$v`'s
+(D125). A struct whose fields are borrows *is* the value, so `Copy` or `Give` of it keeps its fields' borrows: the copy
+still borrows the same sources, as its type says.
+
+Design claude noted the one surprise: with `: infer`, `var $j: infer = Copy $i;` doesn't show on its line that `$j`
+still borrows; the checker still refuses any change to the source while `$j` is used, and the message says why. A
+narrowing such as `Copy.borrowing` for that case was weighed and not taken.
+
+## D144 — A borrow is still used if any path uses it (2026-10-31)
+
+Proposed by design claude for the oracle's provisional reading 17, owner: "yes" (typed "yeds"). For D129, **a borrow
+is still used at a point if any path from there uses its holder**: later in its blocks, or anywhere in a loop around
+them that it was declared outside of, since the next trip comes after. Whether that path will really run doesn't
+matter:
+
+```
+var $v: Lend from $r reading = Lend $r;
+$r.celsius = 25;                       // refused: the `if` below might use $v
+if $hot:
+    std::print($v.celsius, newline);
+end if
+```
+
+It is checked while compiling without proving which way each `if` goes, and a reader checks it by looking down the
+code. As in Rust.
 
 ---
 

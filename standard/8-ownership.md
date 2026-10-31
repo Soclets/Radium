@@ -64,7 +64,7 @@ fn close [$f: Given open_file] -> void:
 ## 8.5 Stored borrows
 
 A borrow kept in a name, a result or a field always says where it comes from (D5, D49, D126). The oracle runs a
-stored `Lend` as a copy, which behaves the same, since its source can't change while it is used (provisional).
+stored `Lend` as a copy, which behaves the same, since its source can't change while it is used (D141).
 
 1. **A stored borrow's type is `Lend from` its source and the value's type**: `Lend from $r reading`. A borrow of a
    value that is always copied is refused (D92). The source is a `$name` in scope, `program` (it lasts until the
@@ -72,12 +72,16 @@ stored `Lend` as a copy, which behaves the same, since its source can't change w
    from either and lasts only while both do; several in `[ ]` are refused, since `[ ]` is for values (D127, D138).
    *Tests:* `borrow_stored_in_a_name`, `borrow_from_either`, `sources_in_square_brackets`, `borrow_from_program`.
 2. **A borrow goes only where its type names its source**, even if another source would last long enough (D130).
-   *Tests:* `borrow_names_its_source`.
+   A stored `Lend` stands for the value it reaches: `Lend $v`, where `$v` borrows from `$r`, borrows from `$r`;
+   `Copy $v` gives a value of its own; `Give $v` is refused. A copy of a struct whose fields are borrows still
+   borrows their sources (D142, D143).
+   *Tests:* `borrow_names_its_source`, `lend_a_borrow`, `copy_a_borrow`, `copy_keeps_a_struct_s_borrows`.
 3. **A borrow ends at its holder's last use** (D129). While it is still used, its source can't change, be given away,
-   or be lent to change (D5). A use on a later trip of a loop counts. Through a stored `Lend`, nothing changes
-   (D80, D135).
+   or be lent to change (D5). A use on any path after counts, even inside an `if` that may not run, and so does a use on
+   a later trip of a loop (D144). Through a stored `Lend`, nothing changes (D80, D135).
    *Tests:* `borrow_ends_at_last_use`, `borrow_still_used_blocks_change`, `borrow_still_used_blocks_give`,
-   `borrow_still_used_blocks_lend_mut`, `borrow_used_on_the_next_trip`, `borrow_is_read_only`.
+   `borrow_still_used_blocks_lend_mut`, `borrow_used_on_the_next_trip`, `borrow_used_on_some_path`,
+   `borrow_is_read_only`.
 4. **A struct that holds a borrow declares its named sources** in `< >` after its name, and each field borrows from
    one of them or from `program`, never from a `$name` (D126, D138). Each source has its own name (D134) and is used
    by a field (D133). A source may carry rules, `` `table`: lasts_at_least `text` ``, joined with `and`; the same
@@ -92,8 +96,8 @@ stored `Lend` as a copy, which behaves the same, since its source can't change w
    `struct_field_borrows_a_name`, `struct_fact_written_twice`.
 5. **The struct's type fills in every source, with `:`, in the declared order**:
    ``index<`text`: $article, `table`: $list>`` (D5, D126, D136). Leaving one out is refused. The fills keep the
-   struct's rules: the oracle takes a name declared earlier, still in view, to last at least as long as one declared
-   later, a parameter to outlast the function's own names, and `program` to outlast everything (provisional).
+   struct's rules. A value lasts until the end of its block, so of two names in view the one declared first lasts at
+   least as long; a parameter outlasts the function's own names; `program` outlasts everything (D140).
    *Tests:* `struct_source_left_out`, `struct_sources_in_order`, `struct_rule_kept`.
 6. **A result borrows only from a parameter, a function's own source or `program`**, never from a value given to the
    function, and its body is checked against what it claims (D49, D127, D130).

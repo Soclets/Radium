@@ -17,8 +17,10 @@ From D49, D80, D84, D91, D92, D125–D127, D129, D130, D132–D136 and D138.
   either of several sources, listed in `< >` (`Lend from <$x, $y>`, D138), and sources can be compared
   (``struct index <`text`, `table`: lasts_at_least `text`>``, D138), including `program`, which lasts until
   the program ends (D127).
-- **A borrow ends at its last use** (D129); until then its source can't change or be given away (D5).
-- **A borrow comes only from a source its type names** (D130), even if another would last long enough.
+- **A value lasts until the end of its block** (D140); **a borrow ends at its last use** (D129), on any path from
+  there (D144), and until then its source can't change or be given away (D5).
+- **A borrow comes only from a source its type names** (D130), even if another would last long enough. A borrow stands
+  for the value it reaches: lending it passes on its source, and `Copy` of it gives a value of its own (D142, D143).
 - **A function states the `lasts_at_least` rules its parameters must meet** when it fills a struct with them, so its
   contract shows everything a caller must meet: `requires $list lasts_at_least $article;` (D132). The same fact
   written twice is refused (D127).

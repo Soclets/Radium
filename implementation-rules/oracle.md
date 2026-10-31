@@ -1,6 +1,6 @@
 # The oracle
 
-From D16, D48, D93 and D103.
+From D16, D48, D93, D103 and D141.
 
 - **Purpose:** a runnable form of `DECISIONS.md`, so the design is enforced by something that doesn't drift.
 - **Written by the design session**, in Rust, in `oracle/`. It grows as decisions are made.
@@ -14,3 +14,6 @@ From D16, D48, D93 and D103.
   guessed; anything decided but not yet built is "not built".
 - **Readings are listed, not hidden:** where the oracle had to read a decision one way to run at all, the reading is
   in `oracle/README.md` as provisional until the owner rules on it.
+- **Oracle methods are listed too:** a way of running that can't give different results from the decided meaning
+  (running a borrow as a copy, D141) is listed in `oracle/README.md` as a method, with the decisions that make it
+  safe.
