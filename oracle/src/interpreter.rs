@@ -11,6 +11,7 @@ use crate::ast::{
 use num_bigint::{BigInt, Sign};
 
 use crate::binding::{Binding, bind_arguments};
+use crate::outcome::{Place, Problem};
 use crate::rules::range_can_end;
 
 /// The oracle stops after this many steps, so a program that never ends can't hang it.
@@ -19,15 +20,19 @@ const STEP_LIMIT: u64 = 10_000_000;
 /// The oracle stops when calls nest deeper than this. The real limit is the target's proven stack (D8).
 const DEPTH_LIMIT: usize = 200;
 
-/// Why a run stopped before the end of `main`.
+/// Why a run stopped before the end of `fn.main`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Stop {
-    /// A check site failed.
-    CheckFails { line: usize, message: String },
-    /// The oracle reached one of its own limits.
-    GaveUp { line: usize, message: String },
+    /// A check failed (D114), or the oracle reached one of its own limits.
+    Problem(Problem),
     /// The oracle contradicted its own checker.
     Fault(String),
+}
+
+impl From<Problem> for Stop {
+    fn from(problem: Problem) -> Self {
+        Self::Problem(problem)
+    }
 }
 
 /// Runs `fn.main` (D101), returning how it ended and everything printed.
@@ -48,7 +53,7 @@ pub(crate) fn run(program: &Program) -> (Result<(), Stop>, String) {
         result: None,
     };
     let result = machine
-        .invoke(&program.main, frame, program.main.line)
+        .invoke(&program.main, frame, program.main.place)
         .map(|_| ());
     (result, machine.output)
 }
@@ -64,6 +69,8 @@ enum Value {
 struct Slot {
     value: Value,
     bounds: Option<Bounds>,
+    /// Where the value's bounds are written, for `because:` links (D122).
+    declared: Place,
 }
 
 /// How a statement or block ended.
@@ -71,8 +78,8 @@ enum Flow {
     Normal,
     /// A `break`, and the loop name it named.
     Break(Option<String>),
-    /// A `return`, its value (`None` for `return void;`, D100), and its line (D95).
-    Return(Option<Value>, usize),
+    /// A `return`, its value (`None` for `return void;`, D100), and its place (D95).
+    Return(Option<Value>, Place),
 }
 
 /// One function call's values.
@@ -128,7 +135,7 @@ impl<'program> Machine<'program> {
         frame: &mut Frame,
     ) -> Result<Flow, Stop> {
         for statement in statements {
-            self.tick(statement.line)?;
+            self.tick(statement.place)?;
             let flow = self.statement(statement, frame)?;
             if !matches!(flow, Flow::Normal) {
                 return Ok(flow);
@@ -137,13 +144,14 @@ impl<'program> Machine<'program> {
         Ok(Flow::Normal)
     }
 
-    fn tick(&mut self, line: usize) -> Result<(), Stop> {
+    fn tick(&mut self, place: Place) -> Result<(), Stop> {
         self.steps = self.steps.saturating_add(1);
         if self.steps > STEP_LIMIT {
-            return Err(Stop::GaveUp {
-                line,
-                message: format!("the oracle stopped after {STEP_LIMIT} steps"),
-            });
+            return Err(Problem::gave_up(
+                place,
+                format!("the oracle stopped after {STEP_LIMIT} steps"),
+            )
+            .into());
         }
         Ok(())
     }
@@ -153,26 +161,34 @@ impl<'program> Machine<'program> {
         statement: &'program Statement,
         frame: &mut Frame,
     ) -> Result<Flow, Stop> {
-        let line = statement.line;
+        let place = statement.place;
         match &statement.kind {
             StatementKind::Declare {
                 name,
                 type_spec,
-                value,
+                value: expression,
                 ..
             } => {
-                let value = self.evaluate(value, frame)?;
+                let value = self.evaluate(expression, frame)?;
                 let bounds = type_spec.as_ref().and_then(TypeSpec::bounds).cloned();
-                check_bounds(line, name, &value, bounds.as_ref())?;
-                frame.declare(name, Slot { value, bounds });
+                let slot = Slot {
+                    value,
+                    bounds,
+                    declared: place,
+                };
+                check_bounds(expression.place, name, &slot.value, &slot)?;
+                frame.declare(name, slot);
                 Ok(Flow::Normal)
             }
-            StatementKind::Assign { name, value } => {
-                let value = self.evaluate(value, frame)?;
+            StatementKind::Assign {
+                name,
+                value: expression,
+            } => {
+                let value = self.evaluate(expression, frame)?;
                 let slot = frame
                     .lookup_mut(name)
                     .ok_or_else(|| fault(format!("`${name}` has no slot")))?;
-                check_bounds(line, name, &value, slot.bounds.as_ref())?;
+                check_bounds(expression.place, name, &value, slot)?;
                 slot.value = value;
                 Ok(Flow::Normal)
             }
@@ -199,14 +215,14 @@ impl<'program> Machine<'program> {
                 variable,
                 range,
                 body,
-            } => self.for_loop(line, loop_name.as_ref(), variable, range, body, frame),
+            } => self.for_loop(place, loop_name.as_ref(), variable, range, body, frame),
             StatementKind::While {
                 condition,
                 decreases,
                 body,
-            } => self.while_loop(line, condition, decreases.as_ref(), body, frame),
+            } => self.while_loop(place, condition, decreases.as_ref(), body, frame),
             StatementKind::Forever { loop_name, body } => loop {
-                self.tick(line)?;
+                self.tick(place)?;
                 if let Some(flow) = after_trip(self.block(body, frame)?, loop_name.as_ref()) {
                     return Ok(flow);
                 }
@@ -217,14 +233,14 @@ impl<'program> Machine<'program> {
                     Some(value) => Some(self.evaluate(value, frame)?),
                     None => None,
                 };
-                Ok(Flow::Return(value, line))
+                Ok(Flow::Return(value, place))
             }
         }
     }
 
     fn for_loop(
         &mut self,
-        line: usize,
+        place: Place,
         loop_name: Option<&String>,
         variable: &str,
         range: &'program LoopRange,
@@ -241,10 +257,14 @@ impl<'program> Machine<'program> {
             None => BigInt::from(1),
         };
         if !range_can_end(&from, &end, &step) {
-            return Err(Stop::CheckFails {
-                line,
-                message: "this loop's step can never reach its end (D74)".to_owned(),
-            });
+            let end_label = if inclusive { "to" } else { "before" };
+            return Err(Problem::check_failed(
+                place,
+                "this loop's step can never reach its end",
+                "a loop's step must lead from `from:` to its end (D74)",
+            )
+            .when(format!("from: {from}, {end_label}: {end}, step_by: {step}"))
+            .into());
         }
         let mut current = from;
         loop {
@@ -257,12 +277,13 @@ impl<'program> Machine<'program> {
             if !inside {
                 return Ok(Flow::Normal);
             }
-            self.tick(line)?;
+            self.tick(place)?;
             frame.scopes.push(HashMap::from([(
                 variable.to_owned(),
                 Slot {
                     value: Value::Integer(current.clone()),
                     bounds: None,
+                    declared: place,
                 },
             )]));
             let flow = self.block(body, frame);
@@ -276,7 +297,7 @@ impl<'program> Machine<'program> {
 
     fn while_loop(
         &mut self,
-        line: usize,
+        place: Place,
         condition: &'program Expression,
         decreases: Option<&'program Expression>,
         body: &'program [Statement],
@@ -284,7 +305,7 @@ impl<'program> Machine<'program> {
     ) -> Result<Flow, Stop> {
         let mut previous: Option<BigInt> = None;
         loop {
-            self.tick(line)?;
+            self.tick(place)?;
             if !self.truth(condition, frame)? {
                 return Ok(Flow::Normal);
             }
@@ -292,20 +313,24 @@ impl<'program> Machine<'program> {
                 // trace D75: the measure shrinks every trip and never goes below zero.
                 let value = self.integer(measure, frame)?;
                 if value.sign() == Sign::Minus {
-                    return Err(Stop::CheckFails {
-                        line: measure.line,
-                        message: format!("`decreases` went below zero, to {value} (D75)"),
-                    });
+                    return Err(Problem::check_failed(
+                        measure.place,
+                        "`decreases` went below zero",
+                        "a `decreases` value shrinks every trip and never goes below zero (D75)",
+                    )
+                    .when(format!("it is {value}"))
+                    .into());
                 }
                 if let Some(before) = &previous
                     && value >= *before
                 {
-                    return Err(Stop::CheckFails {
-                        line: measure.line,
-                        message: format!(
-                            "`decreases` didn't shrink: {before} on one trip, {value} on the next (D75)"
-                        ),
-                    });
+                    return Err(Problem::check_failed(
+                        measure.place,
+                        "`decreases` didn't shrink",
+                        "a `decreases` value shrinks every trip and never goes below zero (D75)",
+                    )
+                    .when(format!("{before} on one trip, {value} on the next"))
+                    .into());
                 }
                 previous = Some(value);
             }
@@ -325,7 +350,7 @@ impl<'program> Machine<'program> {
             .functions
             .get(name.as_str())
             .ok_or_else(|| fault(format!("no function `{name}`")))?;
-        let bindings = bind_arguments(function, call).map_err(|problem| fault(problem.message))?;
+        let bindings = bind_arguments(function, call).map_err(|problem| fault(problem.what()))?;
         // trace D55: arguments are evaluated left to right, as written.
         let mut argument_values = Vec::with_capacity(call.arguments.len());
         for argument in &call.arguments {
@@ -350,22 +375,25 @@ impl<'program> Machine<'program> {
                     self.evaluate(&default.value, &mut callee)?
                 }
             };
-            check_bounds(
-                call.line,
-                &parameter.name,
-                &value,
-                parameter.type_spec.bounds(),
-            )?;
-            callee.old.insert(parameter.name.clone(), value.clone());
-            callee.declare(
-                &parameter.name,
-                Slot {
-                    value,
-                    bounds: parameter.type_spec.bounds().cloned(),
-                },
-            );
+            let slot = Slot {
+                value,
+                bounds: parameter.type_spec.bounds().cloned(),
+                declared: parameter.place,
+            };
+            let argument_place = match binding {
+                Binding::Argument(index) => call
+                    .arguments
+                    .get(index)
+                    .map_or(call.place, |argument| argument.value.place),
+                Binding::Default(_) => call.place,
+            };
+            check_bounds(argument_place, &parameter.name, &slot.value, &slot)?;
+            callee
+                .old
+                .insert(parameter.name.clone(), slot.value.clone());
+            callee.declare(&parameter.name, slot);
         }
-        self.invoke(function, callee, call.line)
+        self.invoke(function, callee, call.place)
     }
 
     /// Runs a function whose parameters are already in `callee`: `requires`, the body, the result, `ensures`.
@@ -373,42 +401,50 @@ impl<'program> Machine<'program> {
         &mut self,
         function: &'program Function,
         mut callee: Frame,
-        call_line: usize,
+        call_place: Place,
     ) -> Result<Option<Value>, Stop> {
         let name = &function.name;
         for condition in &function.requires {
             if !self.truth(condition, &mut callee)? {
-                return Err(Stop::CheckFails {
-                    line: call_line,
-                    message: format!(
-                        "this call doesn't meet `{name}`'s `requires` on line {} (D53)",
-                        condition.line
-                    ),
-                });
+                return Err(Problem::check_failed(
+                    call_place,
+                    format!("this call doesn't meet `{name}`'s `requires`"),
+                    "callers must guarantee what a function `requires` (D53)",
+                )
+                .because(condition.place, format!("`{name}` requires this"))
+                .into());
             }
         }
         self.depth = self.depth.saturating_add(1);
         if self.depth > DEPTH_LIMIT {
-            return Err(Stop::GaveUp {
-                line: call_line,
-                message: format!("calls nested deeper than the oracle's {DEPTH_LIMIT}"),
-            });
+            return Err(Problem::gave_up(
+                call_place,
+                format!("calls nested deeper than the oracle's {DEPTH_LIMIT}"),
+            )
+            .into());
         }
         let flow = self.block(&function.body, &mut callee);
         self.depth = self.depth.saturating_sub(1);
         match (flow?, function.result.as_ref()) {
-            (Flow::Return(Some(value), line), Some(result)) => {
+            (Flow::Return(Some(value), place), Some(result)) => {
                 // trace D95: the value given back is checked against the result type's bounds (D14).
                 if let (Value::Integer(number), Some(bounds)) = (&value, result.bounds())
                     && (*number < bounds.min || *number > bounds.max)
                 {
-                    return Err(Stop::CheckFails {
-                        line,
-                        message: format!(
-                            "`{name}` would give back {number}, outside int[min: {}, max: {}] (D14, D95)",
+                    return Err(Problem::check_failed(
+                        place,
+                        format!(
+                            "`{name}` gives back a value outside int[min: {}, max: {}]",
                             bounds.min, bounds.max
                         ),
-                    });
+                        "a function's result stays within its result type's bounds (D14, D95)",
+                    )
+                    .when(format!("it would give back {number}"))
+                    .because(
+                        function.place,
+                        format!("`{name}`'s result type is set here"),
+                    )
+                    .into());
                 }
                 callee.result = Some(value);
             }
@@ -421,10 +457,15 @@ impl<'program> Machine<'program> {
         }
         for condition in &function.ensures {
             if !self.truth(condition, &mut callee)? {
-                return Err(Stop::CheckFails {
-                    line: condition.line,
-                    message: format!("`{name}` doesn't keep this `ensures` (D53)"),
-                });
+                let mut problem = Problem::check_failed(
+                    condition.place,
+                    format!("`{name}` doesn't keep this `ensures`"),
+                    "a function keeps every promise its `ensures` makes (D53)",
+                );
+                if let Some(result) = &callee.result {
+                    problem = problem.when(format!("`result` is {}", show(result)));
+                }
+                return Err(problem.into());
             }
         }
         Ok(callee.result)
@@ -469,7 +510,7 @@ impl<'program> Machine<'program> {
         expression: &'program Expression,
         frame: &mut Frame,
     ) -> Result<Value, Stop> {
-        let line = expression.line;
+        let place = expression.place;
         match &expression.kind {
             ExpressionKind::Integer(number) => Ok(Value::Integer(number.clone())),
             ExpressionKind::Bool(truth) => Ok(Value::Bool(*truth)),
@@ -513,7 +554,7 @@ impl<'program> Machine<'program> {
                 _ => {
                     let left = self.integer(left, frame)?;
                     let right = self.integer(right, frame)?;
-                    arithmetic(line, *operator, &left, &right)
+                    arithmetic(place, *operator, &left, &right)
                 }
             },
         }
@@ -539,28 +580,36 @@ fn finish_loop(target: Option<String>, loop_name: Option<&String>) -> Flow {
     }
 }
 
-fn check_bounds(
-    line: usize,
-    name: &str,
-    value: &Value,
-    bounds: Option<&Bounds>,
-) -> Result<(), Stop> {
-    if let (Value::Integer(number), Some(bounds)) = (value, bounds)
+/// Checks a value against the bounds of the slot it is going into (D14).
+fn check_bounds(place: Place, name: &str, value: &Value, slot: &Slot) -> Result<(), Stop> {
+    if let (Value::Integer(number), Some(bounds)) = (value, &slot.bounds)
         && (*number < bounds.min || *number > bounds.max)
     {
-        return Err(Stop::CheckFails {
-            line,
-            message: format!(
-                "`${name}` would hold {number}, outside int[min: {}, max: {}] (D14)",
+        return Err(Problem::check_failed(
+            place,
+            format!(
+                "`${name}` holds int[min: {}, max: {}], and this value doesn't fit",
                 bounds.min, bounds.max
             ),
-        });
+            "every value stays within its bounds (D14)",
+        )
+        .when(format!("it would be {number}"))
+        .because(slot.declared, format!("`${name}`'s bounds are set here"))
+        .into());
     }
     Ok(())
 }
 
+/// A value as `std::print` would show it.
+fn show(value: &Value) -> String {
+    match value {
+        Value::Integer(number) => number.to_string(),
+        Value::Bool(truth) => truth.to_string(),
+    }
+}
+
 fn arithmetic(
-    line: usize,
+    place: Place,
     operator: Operator,
     left: &BigInt,
     right: &BigInt,
@@ -569,8 +618,8 @@ fn arithmetic(
         Operator::Add => Ok(Value::Integer(left + right)),
         Operator::Subtract => Ok(Value::Integer(left - right)),
         Operator::Multiply => Ok(Value::Integer(left * right)),
-        Operator::Divide(rounding) => divide(line, rounding, left, right).map(Value::Integer),
-        Operator::Remainder(rule) => remainder(line, rule, left, right).map(Value::Integer),
+        Operator::Divide(rounding) => divide(place, rounding, left, right).map(Value::Integer),
+        Operator::Remainder(rule) => remainder(place, rule, left, right).map(Value::Integer),
         Operator::Less => Ok(Value::Bool(left < right)),
         Operator::Greater => Ok(Value::Bool(left > right)),
         Operator::AtMost => Ok(Value::Bool(left <= right)),
@@ -582,12 +631,15 @@ fn arithmetic(
 }
 
 /// `/` and `%` on big integers truncate toward zero, and the rest takes the sign of `left`.
-fn divide(line: usize, rounding: Rounding, left: &BigInt, right: &BigInt) -> Result<BigInt, Stop> {
+fn divide(place: Place, rounding: Rounding, left: &BigInt, right: &BigInt) -> Result<BigInt, Stop> {
     if right.sign() == Sign::NoSign {
-        return Err(Stop::CheckFails {
-            line,
-            message: "division by zero (D37)".to_owned(),
-        });
+        return Err(Problem::check_failed(
+            place,
+            "a division by zero",
+            "nothing is divided by zero (D37)",
+        )
+        .when(format!("{left} div 0"))
+        .into());
     }
     let quotient = left / right;
     let rest = left % right;
@@ -595,12 +647,13 @@ fn divide(line: usize, rounding: Rounding, left: &BigInt, right: &BigInt) -> Res
     let signs_differ = (rest.sign() == Sign::Minus) != (right.sign() == Sign::Minus);
     match rounding {
         Rounding::Exact if !has_rest => Ok(quotient),
-        Rounding::Exact => Err(Stop::CheckFails {
-            line,
-            message: format!(
-                "`div` is exact, but {left} div {right} leaves a remainder; write `div.floor`, `div.trunc` or `div.ceil` (D37)"
-            ),
-        }),
+        Rounding::Exact => Err(Problem::check_failed(
+            place,
+            "this division leaves a remainder",
+            "bare `div` is exact; rounding is only ever written, as a narrowing (D37)",
+        )
+        .when(format!("{left} div {right}"))
+        .into()),
         Rounding::Floor if has_rest && signs_differ => Ok(quotient - 1),
         Rounding::Ceil if has_rest && !signs_differ => Ok(quotient + 1),
         Rounding::Trunc | Rounding::Floor | Rounding::Ceil => Ok(quotient),
@@ -608,26 +661,30 @@ fn divide(line: usize, rounding: Rounding, left: &BigInt, right: &BigInt) -> Res
 }
 
 fn remainder(
-    line: usize,
+    place: Place,
     rule: RemainderRule,
     left: &BigInt,
     right: &BigInt,
 ) -> Result<BigInt, Stop> {
     if right.sign() == Sign::NoSign {
-        return Err(Stop::CheckFails {
-            line,
-            message: "remainder of a division by zero (D38)".to_owned(),
-        });
+        return Err(Problem::check_failed(
+            place,
+            "a remainder of a division by zero",
+            "nothing is divided by zero (D38)",
+        )
+        .when(format!("{left} mod 0"))
+        .into());
     }
     let rest = left % right;
     match rule {
         RemainderRule::NonNegative if left.sign() == Sign::Minus || right.sign() == Sign::Minus => {
-            Err(Stop::CheckFails {
-                line,
-                message: format!(
-                    "bare `mod` needs both numbers non-negative, but this is {left} mod {right}; write `mod.floor`, `mod.trunc` or `mod.euclid` (D38)"
-                ),
-            })
+            Err(Problem::check_failed(
+                place,
+                "bare `mod` with a negative number",
+                "bare `mod` needs both numbers non-negative, where every definition agrees (D38)",
+            )
+            .when(format!("{left} mod {right}"))
+            .into())
         }
         RemainderRule::Floor
             if rest.sign() != Sign::NoSign

@@ -12,7 +12,7 @@ use crate::ast::{
 use num_bigint::BigInt;
 
 use crate::binding::{Binding, bind_arguments};
-use crate::outcome::Problem;
+use crate::outcome::{Place, Problem};
 use crate::rules::{is_radium_word, range_can_end};
 
 /// Checks a whole program.
@@ -21,11 +21,8 @@ pub(crate) fn check(program: &Program) -> Result<(), Problem> {
     for function in &program.functions {
         if functions.insert(function.name.as_str(), function).is_some() {
             return Err(Problem::not_decided(
-                function.line,
-                format!(
-                    "two functions named `{}`: whether a name may be used twice isn't decided",
-                    function.name
-                ),
+                function.place,
+                format!("two functions named `{}`", function.name),
             ));
         }
     }
@@ -41,14 +38,14 @@ pub(crate) fn check(program: &Program) -> Result<(), Problem> {
     let main = &program.main;
     if !main.parameters.is_empty() {
         return Err(Problem::not_decided(
-            main.line,
-            "parameters for `fn.main` (such as command-line arguments) aren't decided",
+            main.place,
+            "parameters for `fn.main`, such as command-line arguments (D101)",
         ));
     }
     if main.result.is_some() {
         return Err(Problem::not_decided(
-            main.line,
-            "what `fn.main` may give back other than `void` (such as an exit status) isn't decided",
+            main.place,
+            "what `fn.main` may give back besides `void`, such as an exit status (D101)",
         ));
     }
     checker.function_definition(main)
@@ -69,7 +66,8 @@ enum Role {
 struct Known {
     role: Role,
     kind: ValueKind,
-    line: usize,
+    /// Where it was declared, for `because:` links (D122).
+    place: Place,
     changed: bool,
 }
 
@@ -95,18 +93,20 @@ impl<'program> Checker<'program> {
         self.function = Some(function);
         self.scopes.push(HashMap::new());
         for parameter in &function.parameters {
-            check_type(&parameter.type_spec, parameter.line)?;
-            if self.lookup(&parameter.name).is_some() {
+            check_type(&parameter.type_spec, parameter.place)?;
+            if let Some(first) = self.lookup(&parameter.name) {
                 return Err(Problem::refused(
-                    parameter.line,
-                    format!("two parameters are named `${}`", parameter.name),
-                ));
+                    parameter.place,
+                    format!("a second parameter named `${}`", parameter.name),
+                    "a function's parameters have different names (D31)",
+                )
+                .because(first.place, "the first one is here"));
             }
             self.declare(
                 &parameter.name,
                 Role::Parameter(parameter.changeability),
                 parameter.type_spec.kind(),
-                parameter.line,
+                parameter.place,
             );
         }
         labels_and_defaults(function)?;
@@ -119,11 +119,9 @@ impl<'program> Checker<'program> {
         self.block(&function.body)?;
         if !always_returns(&function.body) {
             return Err(Problem::refused(
-                function.line,
-                format!(
-                    "`{}` can reach its end without `return`; every path must end in `return`, which for `-> void` is `return void;` (D96, D102)",
-                    function.name
-                ),
+                function.place,
+                format!("`{}` can reach its end without `return`", function.name),
+                "every path through a function ends in `return`, which for `-> void` is `return void;` (D96, D102)",
             ));
         }
         self.pop_scope()
@@ -138,20 +136,21 @@ impl<'program> Checker<'program> {
     }
 
     fn statement(&mut self, statement: &'program Statement) -> Result<(), Problem> {
-        let line = statement.line;
+        let place = statement.place;
         match &statement.kind {
             StatementKind::Declare {
                 holder,
                 name,
                 type_spec,
                 value,
-            } => self.declaration(line, *holder, name, type_spec.as_ref(), value),
-            StatementKind::Assign { name, value } => self.assignment(line, name, value),
+            } => self.declaration(place, *holder, name, type_spec.as_ref(), value),
+            StatementKind::Assign { name, value } => self.assignment(place, name, value),
             StatementKind::Call(call) => {
                 if self.call(call, Context::Plain)?.is_some() {
                     return Err(Problem::refused(
-                        call.line,
-                        "this call's result is thrown away; a result can't be ignored (D97)",
+                        call.place,
+                        "this call's result is thrown away",
+                        "a result can't be ignored (D97)",
                     ));
                 }
                 Ok(())
@@ -174,7 +173,7 @@ impl<'program> Checker<'program> {
                 variable,
                 range,
                 body,
-            } => self.for_loop(line, loop_name.as_ref(), variable, range, body),
+            } => self.for_loop(place, loop_name.as_ref(), variable, range, body),
             StatementKind::While {
                 condition,
                 decreases,
@@ -187,46 +186,58 @@ impl<'program> Checker<'program> {
                 self.loop_body(None, body)
             }
             StatementKind::Forever { loop_name, body } => self.loop_body(loop_name.as_ref(), body),
-            StatementKind::Break { loop_name } => self.break_statement(line, loop_name.as_ref()),
-            StatementKind::Return { value } => self.return_statement(line, value.as_ref()),
+            StatementKind::Break { loop_name } => self.break_statement(place, loop_name.as_ref()),
+            StatementKind::Return { value } => self.return_statement(place, value.as_ref()),
         }
     }
 
-    fn return_statement(&self, line: usize, value: Option<&Expression>) -> Result<(), Problem> {
+    fn return_statement(&self, place: Place, value: Option<&Expression>) -> Result<(), Problem> {
         let Some(function) = self.function else {
-            return Err(Problem::refused(line, "`return` is only inside a function"));
+            return Err(Problem::refused(
+                place,
+                "`return` outside a function",
+                "`return` ends a function (D95)",
+            ));
         };
+        let header = (
+            function.place,
+            format!("`{}`'s result is set here", function.name),
+        );
         match (function.result.as_ref(), value) {
             (None, None) => Ok(()),
             (None, Some(_)) => Err(Problem::refused(
-                line,
-                format!(
-                    "`{}` has `-> void`, so it gives nothing back; it returns with `return void;` (D99, D100)",
-                    function.name
-                ),
-            )),
+                place,
+                format!("`{}` gives nothing back", function.name),
+                "a `-> void` function returns with `return void;` (D99, D100)",
+            )
+            .fix("`return void;`")
+            .because(header.0, header.1)),
             (Some(result), None) => Err(Problem::refused(
-                line,
+                place,
                 format!(
-                    "`{}` gives back {}; `return void;` is only for `-> void` functions (D100)",
+                    "`{}` gives back {}",
                     function.name,
                     result.kind().describe()
                 ),
-            )),
+                "`return void;` is only for `-> void` functions (D100)",
+            )
+            .because(header.0, header.1)),
             (Some(result), Some(value)) => {
                 let kind = self.expression(value, Context::Plain)?;
                 if kind == result.kind() {
                     Ok(())
                 } else {
                     Err(Problem::refused(
-                        line,
+                        value.place,
                         format!(
-                            "`{}` gives back {}, but this is {}",
+                            "this is {}, but `{}` gives back {}",
+                            kind.describe(),
                             function.name,
-                            result.kind().describe(),
-                            kind.describe()
+                            result.kind().describe()
                         ),
-                    ))
+                        "a `return` gives back a value of the function's result type (D52, D95)",
+                    )
+                    .because(header.0, header.1))
                 }
             }
         }
@@ -234,7 +245,7 @@ impl<'program> Checker<'program> {
 
     fn declaration(
         &mut self,
-        line: usize,
+        place: Place,
         holder: Holder,
         name: &str,
         type_spec: Option<&TypeSpec>,
@@ -242,31 +253,32 @@ impl<'program> Checker<'program> {
     ) -> Result<(), Problem> {
         let value_kind = self.expression(value, Context::Plain)?;
         if let Some(type_spec) = type_spec {
-            check_type(type_spec, line)?;
+            check_type(type_spec, place)?;
             if type_spec.kind() != value_kind {
                 return Err(Problem::refused(
-                    line,
+                    value.place,
                     format!(
-                        "`${name}` holds {}, but its value is {}",
-                        type_spec.kind().describe(),
-                        value_kind.describe()
+                        "this is {}, but `${name}` holds {}",
+                        value_kind.describe(),
+                        type_spec.kind().describe()
                     ),
+                    "a value holds only values of its own type (D30)",
                 ));
             }
         }
         if holder == Holder::Const && !self.is_constant(value) {
             return Err(Problem::refused(
-                line,
-                "a `const` is known when compiling, so its value may use only numbers, `true`, `false` and other `const`s (D30)",
+                value.place,
+                "this value isn't known when compiling",
+                "a `const` is known when compiling, so its value uses only numbers, `true`, `false` and other `const`s (D30)",
             ));
         }
-        if self.lookup(name).is_some() {
+        if let Some(first) = self.lookup(name) {
             return Err(Problem::not_decided(
-                line,
-                format!(
-                    "declaring `${name}` again while the first one is still visible (shadowing) isn't decided"
-                ),
-            ));
+                place,
+                format!("declaring `${name}` again while the first is still visible (shadowing)"),
+            )
+            .because(first.place, format!("the first `${name}` is here")));
         }
         let role = match holder {
             Holder::Var => Role::Var,
@@ -274,59 +286,53 @@ impl<'program> Checker<'program> {
             Holder::VarMut => Role::VarMut,
             Holder::Const => Role::Const,
         };
-        self.declare(name, role, value_kind, line);
+        self.declare(name, role, value_kind, place);
         Ok(())
     }
 
-    fn assignment(&mut self, line: usize, name: &str, value: &Expression) -> Result<(), Problem> {
+    fn assignment(&mut self, place: Place, name: &str, value: &Expression) -> Result<(), Problem> {
         let value_kind = self.expression(value, Context::Plain)?;
         let Some(known) = self.lookup_mut(name) else {
-            return Err(Problem::refused(
-                line,
-                format!("`${name}` isn't declared (D31)"),
-            ));
+            return Err(undeclared(place, name));
         };
-        match known.role {
-            Role::Const => {
-                return Err(Problem::refused(
-                    line,
-                    format!("`${name}` is a `const`, which never changes (D30)"),
-                ));
-            }
-            Role::VarImmut => {
-                return Err(Problem::refused(
-                    line,
-                    format!("`${name}` is `var.immut`, so it never changes after it is set (D30)"),
-                ));
-            }
-            Role::Parameter(Changeability::Fixed) => {
-                return Err(Problem::refused(
-                    line,
-                    format!(
-                        "`${name}` is a parameter, which is `var.immut` unless declared `var` or `var.mut` (D31)"
-                    ),
-                ));
-            }
-            Role::LoopValue => {
-                return Err(Problem::refused(
-                    line,
-                    format!(
-                        "`${name}` is this `for` loop's own value, so it can't be changed inside the loop (D115)"
-                    ),
-                ));
-            }
-            Role::Var | Role::VarMut | Role::Parameter(_) => {}
+        let refusal = match known.role {
+            Role::Const => Some((
+                format!("`${name}` can't change"),
+                "a `const` never changes (D30)",
+                format!("`${name}` is declared `const` here"),
+            )),
+            Role::VarImmut => Some((
+                format!("`${name}` can't change"),
+                "a `var.immut` never changes after it is set (D30)",
+                format!("`${name}` is declared `var.immut` here"),
+            )),
+            Role::Parameter(Changeability::Fixed) => Some((
+                format!("`${name}` can't change"),
+                "a parameter is `var.immut` unless declared `var` or `var.mut` (D31)",
+                format!("`${name}` is declared here"),
+            )),
+            Role::LoopValue => Some((
+                format!("`${name}` can't change inside its loop"),
+                "a `for` loop's own value is `var.immut` for each trip (D115)",
+                format!("`${name}` is this loop's own value"),
+            )),
+            Role::Var | Role::VarMut | Role::Parameter(_) => None,
+        };
+        if let Some((what, why, fact)) = refusal {
+            return Err(Problem::refused(place, what, why).because(known.place, fact));
         }
         known.changed = true;
         if known.kind != value_kind {
             return Err(Problem::refused(
-                line,
+                value.place,
                 format!(
-                    "`${name}` holds {}, but the new value is {}",
-                    known.kind.describe(),
-                    value_kind.describe()
+                    "this is {}, but `${name}` holds {}",
+                    value_kind.describe(),
+                    known.kind.describe()
                 ),
-            ));
+                "a value holds only values of its own type (D30)",
+            )
+            .because(known.place, format!("`${name}` is declared here")));
         }
         Ok(())
     }
@@ -338,15 +344,21 @@ impl<'program> Checker<'program> {
             CallTarget::Print => {
                 if in_pure {
                     return Err(Problem::refused(
-                        call.line,
-                        "a `fn.pure` has no side effects, so it can't print (D51)",
+                        call.place,
+                        "printing inside a `fn.pure`",
+                        "a `fn.pure` has no side effects (D51)",
+                    )
+                    .because(
+                        self.function_place(),
+                        "this function is declared `fn.pure` here",
                     ));
                 }
                 for argument in &call.arguments {
                     if argument.label.is_some() {
                         return Err(Problem::refused(
-                            argument.line,
-                            "`std::print`'s items take no labels (D54)",
+                            argument.place,
+                            "a label on a `std::print` item",
+                            "`std::print`'s items all have the same role, so they take no labels (D54)",
                         ));
                     }
                     if !matches!(
@@ -361,39 +373,40 @@ impl<'program> Checker<'program> {
             CallTarget::Own { name, marked } => {
                 let Some(function) = self.functions.get(name.as_str()).copied() else {
                     return Err(Problem::refused(
-                        call.line,
+                        call.place,
                         format!("there is no function named `{name}`"),
+                        "a call names a function the program declares (D50)",
                     ));
                 };
                 if is_radium_word(name) && !marked {
                     return Err(Problem::refused(
-                        call.line,
-                        format!(
-                            "`{name}` is also a Radium word, so your function is called `my.{name}` (D43)"
-                        ),
-                    ));
+                        call.place,
+                        format!("`{name}` is also a Radium word"),
+                        "a writer's function whose name clashes with a Radium word is called with `my.` (D43)",
+                    )
+                    .fix(format!("`my.{name}(…)`")));
                 }
                 if *marked && !is_radium_word(name) {
                     return Err(Problem::not_decided(
-                        call.line,
-                        "whether `my.` may be written when no name clashes isn't decided (D43)",
+                        call.place,
+                        "whether `my.` may be written when no name clashes (D43)",
                     ));
                 }
                 if in_pure && !function.pure {
                     return Err(Problem::refused(
-                        call.line,
-                        format!(
-                            "a `fn.pure` can call only other `fn.pure` functions, and `{name}` isn't one (D51)"
-                        ),
-                    ));
+                        call.place,
+                        format!("`{name}` isn't `fn.pure`"),
+                        "a `fn.pure` calls only other `fn.pure` functions (D51)",
+                    )
+                    .because(function.place, format!("`{name}` is declared here")));
                 }
                 if context != Context::Plain && !function.pure {
                     return Err(Problem::refused(
-                        call.line,
-                        format!(
-                            "a contract may call only `fn.pure` functions, and `{name}` isn't one (D51)"
-                        ),
-                    ));
+                        call.place,
+                        format!("`{name}` isn't `fn.pure`"),
+                        "a contract calls only `fn.pure` functions, so it never does anything (D51)",
+                    )
+                    .because(function.place, format!("`{name}` is declared here")));
                 }
                 let bindings = bind_arguments(function, call)?;
                 for (parameter, binding) in function.parameters.iter().zip(bindings) {
@@ -406,13 +419,18 @@ impl<'program> Checker<'program> {
                     let kind = self.expression(&argument.value, context)?;
                     if kind != parameter.type_spec.kind() {
                         return Err(Problem::refused(
-                            argument.line,
+                            argument.value.place,
                             format!(
-                                "`${}` takes {}, but this argument is {}",
+                                "this is {}, but `${}` takes {}",
+                                kind.describe(),
                                 parameter.name,
-                                parameter.type_spec.kind().describe(),
-                                kind.describe()
+                                parameter.type_spec.kind().describe()
                             ),
+                            "an argument has its parameter's type (D50)",
+                        )
+                        .because(
+                            parameter.place,
+                            format!("`${}` is declared here", parameter.name),
                         ));
                     }
                 }
@@ -423,7 +441,7 @@ impl<'program> Checker<'program> {
 
     fn for_loop(
         &mut self,
-        line: usize,
+        place: Place,
         loop_name: Option<&String>,
         variable: &str,
         range: &'program LoopRange,
@@ -448,20 +466,22 @@ impl<'program> Checker<'program> {
         ) && !range_can_end(&from, &end, &step)
         {
             return Err(Problem::refused(
-                line,
-                "this loop's step can never reach its end (D74)",
+                place,
+                "this loop's step can never reach its end",
+                "a loop's step must lead from `from:` to its end (D74)",
             ));
         }
-        if self.lookup(variable).is_some() {
+        if let Some(first) = self.lookup(variable) {
             return Err(Problem::not_decided(
-                line,
+                place,
                 format!(
-                    "declaring `${variable}` again while the first one is still visible (shadowing) isn't decided"
+                    "declaring `${variable}` again while the first is still visible (shadowing)"
                 ),
-            ));
+            )
+            .because(first.place, format!("the first `${variable}` is here")));
         }
         self.scopes.push(HashMap::new());
-        self.declare(variable, Role::LoopValue, ValueKind::Integer, line);
+        self.declare(variable, Role::LoopValue, ValueKind::Integer, place);
         self.loop_body(loop_name, body)?;
         self.pop_scope()
     }
@@ -475,8 +495,9 @@ impl<'program> Checker<'program> {
             && self.loops.iter().any(|other| other.as_ref() == Some(name))
         {
             return Err(Problem::not_decided(
-                body.first().map_or(0, |statement| statement.line),
-                format!("a loop named `{name}` inside another loop named `{name}` isn't decided"),
+                body.first()
+                    .map_or(self.function_place(), |statement| statement.place),
+                format!("a loop named `{name}` inside another loop named `{name}`"),
             ));
         }
         self.loops.push(loop_name.cloned());
@@ -485,19 +506,21 @@ impl<'program> Checker<'program> {
         result
     }
 
-    fn break_statement(&self, line: usize, loop_name: Option<&String>) -> Result<(), Problem> {
+    fn break_statement(&self, place: Place, loop_name: Option<&String>) -> Result<(), Problem> {
         if self.loops.is_empty() {
             return Err(Problem::refused(
-                line,
-                "`break` stops a loop, and there is no loop around it (D77)",
+                place,
+                "`break` with no loop around it",
+                "`break` stops the loop it is in (D77)",
             ));
         }
         if let Some(name) = loop_name
             && !self.loops.iter().any(|other| other.as_ref() == Some(name))
         {
             return Err(Problem::refused(
-                line,
-                format!("there is no loop named `{name}` around this `break` (D77)"),
+                place,
+                format!("there is no loop named `{name}` around this `break`"),
+                "`break name;` stops the named loop it is in (D77)",
             ));
         }
         Ok(())
@@ -513,8 +536,9 @@ impl<'program> Checker<'program> {
             Ok(())
         } else {
             Err(Problem::refused(
-                condition.line,
-                format!("{what} needs a `bool`; numbers never count as true or false (D60)"),
+                condition.place,
+                format!("{what}'s condition isn't a `bool`"),
+                "a condition is a `bool`; numbers never count as true or false (D60)",
             ))
         }
     }
@@ -533,37 +557,40 @@ impl<'program> Checker<'program> {
             Ok(())
         } else {
             Err(Problem::refused(
-                expression.line,
-                format!("{what} needs an integer"),
+                expression.place,
+                format!("{what} isn't an integer"),
+                "this place takes an integer (D73, D75)",
             ))
         }
     }
 
     fn expression(&self, expression: &Expression, context: Context) -> Result<ValueKind, Problem> {
-        let line = expression.line;
+        let place = expression.place;
         match &expression.kind {
             ExpressionKind::Integer(_) => Ok(ValueKind::Integer),
             ExpressionKind::Bool(_) => Ok(ValueKind::Bool),
             ExpressionKind::Text(_) | ExpressionKind::Newline => Err(Problem::not_decided(
-                line,
-                "text types aren't designed yet, so text can only be printed",
+                place,
+                "text outside `std::print`; text types are open beyond D120",
             )),
             ExpressionKind::Value(name) => self
                 .lookup(name)
                 .map(|known| known.kind)
-                .ok_or_else(|| Problem::refused(line, format!("`${name}` isn't declared (D31)"))),
+                .ok_or_else(|| undeclared(place, name)),
             ExpressionKind::Old(name) => {
                 if context != Context::Ensures {
                     return Err(Problem::refused(
-                        line,
-                        "`old[…]` only means something in an `ensures` (D53)",
+                        place,
+                        "`old[…]` outside an `ensures`",
+                        "`old[$x]` is a parameter's starting value, which only an `ensures` talks about (D53)",
                     ));
                 }
                 match self.lookup(name) {
                     Some(known) if matches!(known.role, Role::Parameter(_)) => Ok(known.kind),
                     _ => Err(Problem::refused(
-                        line,
-                        format!("`old[…]` takes a parameter, and `${name}` isn't one (D53)"),
+                        place,
+                        format!("`${name}` isn't a parameter"),
+                        "`old[…]` takes a parameter (D53)",
                     )),
                 }
             }
@@ -572,19 +599,21 @@ impl<'program> Checker<'program> {
                 match (context, result) {
                     (Context::Ensures, Some(result)) => Ok(result.kind()),
                     _ => Err(Problem::refused(
-                        line,
-                        "`result` only means something in an `ensures` of a function with `->` (D53)",
+                        place,
+                        "`result` here",
+                        "`result` is the value given back, so it only appears in an `ensures` of a function with a result (D53)",
                     )),
                 }
             }
             ExpressionKind::Call(call) => self.call(call, context)?.ok_or_else(|| {
                 Problem::refused(
-                    line,
-                    "this function has `-> void`, so it gives nothing back to use as a value (D99)",
+                    place,
+                    "this call gives nothing back to use as a value",
+                    "a `-> void` function gives nothing back (D99)",
                 )
             }),
             ExpressionKind::Negate(inner) => self.operands(
-                line,
+                place,
                 context,
                 &[inner],
                 ValueKind::Integer,
@@ -592,7 +621,7 @@ impl<'program> Checker<'program> {
                 ValueKind::Integer,
             ),
             ExpressionKind::Not(inner) => self.operands(
-                line,
+                place,
                 context,
                 &[inner],
                 ValueKind::Bool,
@@ -603,13 +632,13 @@ impl<'program> Checker<'program> {
                 operator,
                 left,
                 right,
-            } => self.binary(line, context, *operator, left, right),
+            } => self.binary(place, context, *operator, left, right),
         }
     }
 
     fn binary(
         &self,
-        line: usize,
+        place: Place,
         context: Context,
         operator: Operator,
         left: &Expression,
@@ -622,7 +651,7 @@ impl<'program> Checker<'program> {
             | Operator::Multiply
             | Operator::Divide(_)
             | Operator::Remainder(_) => self.operands(
-                line,
+                place,
                 context,
                 &sides,
                 ValueKind::Integer,
@@ -631,7 +660,7 @@ impl<'program> Checker<'program> {
             ),
             Operator::Less | Operator::Greater | Operator::AtMost | Operator::AtLeast => self
                 .operands(
-                    line,
+                    place,
                     context,
                     &sides,
                     ValueKind::Integer,
@@ -639,7 +668,7 @@ impl<'program> Checker<'program> {
                     ValueKind::Bool,
                 ),
             Operator::And | Operator::Or => self.operands(
-                line,
+                place,
                 context,
                 &sides,
                 ValueKind::Bool,
@@ -651,8 +680,9 @@ impl<'program> Checker<'program> {
                     Ok(ValueKind::Bool)
                 } else {
                     Err(Problem::refused(
-                        line,
-                        "`equal` and `not_equal` compare two values of the same kind",
+                        place,
+                        "these two values are different kinds",
+                        "`equal` and `not_equal` compare two values of the same kind (D34)",
                     ))
                 }
             }
@@ -661,7 +691,7 @@ impl<'program> Checker<'program> {
 
     fn operands(
         &self,
-        line: usize,
+        place: Place,
         context: Context,
         operands: &[&Expression],
         wanted: ValueKind,
@@ -669,11 +699,18 @@ impl<'program> Checker<'program> {
         gives: ValueKind,
     ) -> Result<ValueKind, Problem> {
         for operand in operands {
-            if self.expression(operand, context)? != wanted {
+            let kind = self.expression(operand, context)?;
+            if kind != wanted {
                 return Err(Problem::refused(
-                    line,
-                    format!("{what} needs {}", wanted.describe()),
-                ));
+                    operand.place,
+                    format!(
+                        "this is {}, but {what} needs {}",
+                        kind.describe(),
+                        wanted.describe()
+                    ),
+                    "each operator works on one kind of value (D34, D60)",
+                )
+                .because(place, "the operator is here"));
             }
         }
         Ok(gives)
@@ -697,11 +734,24 @@ impl<'program> Checker<'program> {
         }
     }
 
-    fn declare(&mut self, name: &str, role: Role, kind: ValueKind, line: usize) {
+    /// The place of the function being checked.
+    fn function_place(&self) -> Place {
+        self.function.map_or(
+            Place {
+                line: 1,
+                byte_column: 1,
+                column: 1,
+                width: 1,
+            },
+            |function| function.place,
+        )
+    }
+
+    fn declare(&mut self, name: &str, role: Role, kind: ValueKind, place: Place) {
         let known = Known {
             role,
             kind,
-            line,
+            place,
             changed: false,
         };
         if let Some(scope) = self.scopes.last_mut() {
@@ -735,11 +785,12 @@ impl<'program> Checker<'program> {
                     )
             })
             .collect();
-        unchanged.sort_by_key(|(_, known)| known.line);
+        unchanged.sort_by_key(|(_, known)| (known.place.line, known.place.column));
         if let Some((name, known)) = unchanged.first() {
             return Err(Problem::refused(
-                known.line,
-                format!("`${name}` is `var.mut`, but nothing changes it (D30)"),
+                known.place,
+                format!("nothing changes `${name}`"),
+                "a `var.mut` must change somewhere (D30)",
             ));
         }
         Ok(())
@@ -755,11 +806,9 @@ fn labels_and_defaults(function: &Function) -> Result<(), Problem> {
                 .any(|parameter| parameter.name == entry.parameter)
             {
                 return Err(Problem::refused(
-                    labels.line,
-                    format!(
-                        "`labels` names `${}`, which isn't a parameter (D54)",
-                        entry.parameter
-                    ),
+                    labels.place,
+                    format!("`${}` isn't a parameter", entry.parameter),
+                    "`labels` gives labels to the function's own parameters (D54)",
                 ));
             }
             let earlier = labels.entries.iter().take(index);
@@ -768,14 +817,16 @@ fn labels_and_defaults(function: &Function) -> Result<(), Problem> {
                 .any(|other| other.parameter == entry.parameter)
             {
                 return Err(Problem::refused(
-                    labels.line,
-                    format!("`${}` is labelled twice (D54)", entry.parameter),
+                    labels.place,
+                    format!("`${}` is labelled twice", entry.parameter),
+                    "each parameter has at most one label (D54)",
                 ));
             }
             if earlier.clone().any(|other| other.label == entry.label) {
                 return Err(Problem::refused(
-                    labels.line,
-                    format!("two parameters share the label `{}` (D54)", entry.label),
+                    labels.place,
+                    format!("two parameters share the label `{}`", entry.label),
+                    "each label names one parameter (D54)",
                 ));
             }
         }
@@ -789,11 +840,9 @@ fn labels_and_defaults(function: &Function) -> Result<(), Problem> {
         });
         if !labelled {
             return Err(Problem::refused(
-                default.line,
-                format!(
-                    "only labelled parameters may have defaults, and `${}` has no label (D54)",
-                    default.parameter
-                ),
+                default.place,
+                format!("`${}` has a default but no label", default.parameter),
+                "only labelled parameters may have defaults (D54)",
             ));
         }
         if function
@@ -803,14 +852,15 @@ fn labels_and_defaults(function: &Function) -> Result<(), Problem> {
             .any(|other| other.parameter == default.parameter)
         {
             return Err(Problem::refused(
-                default.line,
+                default.place,
                 format!("`${}` has two defaults", default.parameter),
+                "each parameter has at most one default (D54)",
             ));
         }
         let Some(kind) = literal_kind(&default.value) else {
             return Err(Problem::not_decided(
-                default.line,
-                "defaults other than a plain number, `true` or `false` aren't decided",
+                default.place,
+                "defaults other than a plain number, `true` or `false`",
             ));
         };
         let parameter = function
@@ -819,12 +869,13 @@ fn labels_and_defaults(function: &Function) -> Result<(), Problem> {
             .find(|parameter| parameter.name == default.parameter);
         if parameter.is_some_and(|parameter| parameter.type_spec.kind() != kind) {
             return Err(Problem::refused(
-                default.line,
+                default.value.place,
                 format!(
-                    "the default for `${}` is {}, which its type doesn't hold",
-                    default.parameter,
-                    kind.describe()
+                    "this default is {}, which `${}`'s type doesn't hold",
+                    kind.describe(),
+                    default.parameter
                 ),
+                "a default has its parameter's type (D54)",
             ));
         }
     }
@@ -880,16 +931,25 @@ fn breaks_out(body: &[Statement], loop_name: Option<&String>, depth: usize) -> b
     })
 }
 
-fn check_type(type_spec: &TypeSpec, line: usize) -> Result<(), Problem> {
+fn check_type(type_spec: &TypeSpec, place: Place) -> Result<(), Problem> {
     if let TypeSpec::Integer(bounds) = type_spec
         && bounds.min > bounds.max
     {
         return Err(Problem::refused(
-            line,
-            format!("`min: {}` is above `max: {}` (D14)", bounds.min, bounds.max),
+            place,
+            format!("`min: {}` is above `max: {}`", bounds.min, bounds.max),
+            "an integer's bounds go from `min` up to `max` (D14)",
         ));
     }
     Ok(())
+}
+
+fn undeclared(place: Place, name: &str) -> Problem {
+    Problem::refused(
+        place,
+        format!("`${name}` isn't declared"),
+        "a value is declared before it is used (D30, D31)",
+    )
 }
 
 fn literal_integer(expression: &Expression) -> Option<BigInt> {

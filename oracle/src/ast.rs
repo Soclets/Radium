@@ -3,6 +3,8 @@
 
 use num_bigint::BigInt;
 
+use crate::outcome::Place;
+
 /// A whole program: its functions and its `fn.main` (D101).
 #[derive(Debug)]
 pub(crate) struct Program {
@@ -14,7 +16,7 @@ pub(crate) struct Program {
 #[derive(Debug)]
 pub(crate) struct Function {
     pub(crate) name: String,
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     /// `fn.pure` (D51).
     pub(crate) pure: bool,
     /// `fn.main`: where the program starts; nothing may call it (D101).
@@ -33,7 +35,7 @@ pub(crate) struct Function {
 #[derive(Debug)]
 pub(crate) struct Parameter {
     pub(crate) name: String,
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     pub(crate) changeability: Changeability,
     pub(crate) type_spec: TypeSpec,
 }
@@ -52,7 +54,7 @@ pub(crate) enum Changeability {
 /// A `labels` line (D54).
 #[derive(Debug)]
 pub(crate) struct Labels {
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     /// `labels.any_order`.
     pub(crate) any_order: bool,
     pub(crate) entries: Vec<LabelEntry>,
@@ -68,7 +70,7 @@ pub(crate) struct LabelEntry {
 /// One entry of a `defaults` line, `$parameter = value` (D54).
 #[derive(Debug)]
 pub(crate) struct ParameterDefault {
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     pub(crate) parameter: String,
     pub(crate) value: Expression,
 }
@@ -127,7 +129,7 @@ impl ValueKind {
 /// One statement or block, with the line it starts on.
 #[derive(Debug)]
 pub(crate) struct Statement {
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     pub(crate) kind: StatementKind,
 }
 
@@ -210,7 +212,7 @@ pub(crate) enum RangeEnd {
 /// A call: `( )` runs something (D50).
 #[derive(Debug)]
 pub(crate) struct Call {
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     pub(crate) target: CallTarget,
     pub(crate) arguments: Vec<Argument>,
 }
@@ -227,7 +229,7 @@ pub(crate) enum CallTarget {
 /// One argument, labelled or not (D54).
 #[derive(Debug)]
 pub(crate) struct Argument {
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     pub(crate) label: Option<String>,
     pub(crate) value: Expression,
 }
@@ -235,7 +237,7 @@ pub(crate) struct Argument {
 /// An expression, with the line it starts on.
 #[derive(Debug)]
 pub(crate) struct Expression {
-    pub(crate) line: usize,
+    pub(crate) place: Place,
     pub(crate) kind: ExpressionKind,
 }
 

@@ -2,17 +2,18 @@
 //! Turns source text into tokens. Comments are removed here (D86, D87), and a stray `#` is refused (D87).
 
 use std::iter::Peekable;
-use std::str::Chars;
+use std::str::CharIndices;
 
 use num_bigint::BigInt;
+use unicode_segmentation::UnicodeSegmentation;
 
-use crate::outcome::Problem;
+use crate::outcome::{Place, Problem};
 
-/// One token and the line it is on.
+/// One token and where it is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Token {
     pub(crate) kind: TokenKind,
-    pub(crate) line: usize,
+    pub(crate) place: Place,
 }
 
 /// The kinds of token.
@@ -45,7 +46,7 @@ pub(crate) enum TokenKind {
 /// Splits a whole program into tokens.
 pub(crate) fn tokenize(source: &str) -> Result<Vec<Token>, Problem> {
     let mut tokens = Vec::new();
-    let mut comment_block_start: Option<usize> = None;
+    let mut comment_block_start: Option<Place> = None;
     for (index, text) in source.lines().enumerate() {
         let line = index.saturating_add(1);
         let trimmed = text.trim();
@@ -55,195 +56,289 @@ pub(crate) fn tokenize(source: &str) -> Result<Vec<Token>, Problem> {
                 comment_block_start = None;
             }
         } else if trimmed == "comment:" {
-            comment_block_start = Some(line);
+            let start = text.len().saturating_sub(text.trim_start().len());
+            comment_block_start = Some(place_of(
+                text,
+                line,
+                start,
+                start.saturating_add(trimmed.len()),
+            ));
         } else {
-            scan_line(text, line, &mut tokens)?;
+            Scanner {
+                text,
+                line,
+                characters: text.char_indices().peekable(),
+            }
+            .scan(&mut tokens)?;
         }
     }
     if let Some(start) = comment_block_start {
         return Err(Problem::refused(
             start,
-            "this `comment:` block never reaches `end comment` (D86)",
+            "this `comment:` block never reaches `end comment`",
+            "a comment block runs from `comment:` to `end comment` (D86)",
         ));
     }
     Ok(tokens)
 }
 
-fn scan_line(text: &str, line: usize, tokens: &mut Vec<Token>) -> Result<(), Problem> {
-    let mut characters = text.chars().peekable();
-    while let Some(character) = characters.next() {
-        let kind = match character {
-            ' ' | '\t' | '\r' => continue,
-            '/' => {
-                if characters.next_if_eq(&'/').is_some() {
-                    let rest: String = characters.collect();
-                    return check_comment(&rest, line);
-                }
-                return Err(Problem::refused(
-                    line,
-                    "`/` has no meaning: Radium divides with `div` (D34, D37)",
-                ));
-            }
-            '#' => {
-                return Err(Problem::refused(
-                    line,
-                    "`#` has no meaning yet; a comment is `//` and a space (D87)",
-                ));
-            }
-            '"' => read_text(&mut characters, line)?,
-            '$' => read_value_name(&mut characters, line)?,
-            ':' => {
-                if characters.next_if_eq(&':').is_some() {
-                    TokenKind::DoubleColon
-                } else {
-                    TokenKind::Colon
-                }
-            }
-            '-' => {
-                if characters.next_if_eq(&'>').is_some() {
-                    TokenKind::Arrow
-                } else {
-                    TokenKind::Minus
-                }
-            }
-            ';' => TokenKind::Semicolon,
-            ',' => TokenKind::Comma,
-            '.' => TokenKind::Dot,
-            '(' => TokenKind::OpenParen,
-            ')' => TokenKind::CloseParen,
-            '[' => TokenKind::OpenBracket,
-            ']' => TokenKind::CloseBracket,
-            '=' => TokenKind::Equals,
-            '+' => TokenKind::Plus,
-            '<' => TokenKind::Less,
-            '>' => TokenKind::Greater,
-            digit if digit.is_ascii_digit() => read_integer(digit, &mut characters, line)?,
-            letter if letter.is_ascii_alphabetic() || letter == '_' => {
-                TokenKind::Word(read_name(letter, &mut characters))
-            }
-            other => {
-                return Err(Problem::refused(
-                    line,
-                    format!("`{other}` has no meaning in Radium"),
-                ));
-            }
-        };
-        tokens.push(Token { kind, line });
-    }
-    Ok(())
-}
-
-/// Checks what follows `//` on a line (D87).
-fn check_comment(rest: &str, line: usize) -> Result<(), Problem> {
-    if rest.trim().is_empty() {
-        return Err(Problem::refused(
-            line,
-            "a lone `//` is refused; paragraph breaks go in a `comment:` block (D86, D87)",
-        ));
-    }
-    if !rest.starts_with(' ') {
-        return Err(Problem::refused(
-            line,
-            "`//` must be followed by a space (D87)",
-        ));
-    }
-    Ok(())
-}
-
-fn read_text(characters: &mut Peekable<Chars<'_>>, line: usize) -> Result<TokenKind, Problem> {
-    let mut text = String::new();
-    for character in characters.by_ref() {
-        match character {
-            '"' => return Ok(TokenKind::Text(text)),
-            '\\' => {
-                return Err(Problem::not_decided(
-                    line,
-                    "escapes inside text aren't decided",
-                ));
-            }
-            other => text.push(other),
-        }
-    }
-    Err(Problem::not_decided(
+/// The place of the bytes `start..end` of one line (D117): byte and grapheme columns, and the width in graphemes.
+pub(crate) fn place_of(text: &str, line: usize, start: usize, end: usize) -> Place {
+    let before = text.get(..start).unwrap_or_default();
+    let part = text.get(start..end).unwrap_or_default();
+    Place {
         line,
-        "text that runs past the end of its line isn't decided",
-    ))
+        byte_column: start.saturating_add(1),
+        column: before.graphemes(true).count().saturating_add(1),
+        width: part.graphemes(true).count().max(1),
+    }
 }
 
-fn read_value_name(
-    characters: &mut Peekable<Chars<'_>>,
+/// Reads the tokens of one line.
+struct Scanner<'text> {
+    text: &'text str,
     line: usize,
-) -> Result<TokenKind, Problem> {
-    if characters.peek() == Some(&'"') {
-        return Err(Problem::not_decided(
-            line,
-            "what may go inside a quoted name `$\"…\"` is open (D32)",
-        ));
-    }
-    let mut name = String::new();
-    while let Some(character) =
-        characters.next_if(|character| character.is_ascii_alphanumeric() || *character == '_')
-    {
-        name.push(character);
-    }
-    if name.is_empty() {
-        return Err(Problem::refused(
-            line,
-            "`$` starts a value's name, so a name must follow it (D31)",
-        ));
-    }
-    Ok(TokenKind::ValueName(name))
+    characters: Peekable<CharIndices<'text>>,
 }
 
-fn read_integer(
-    first: char,
-    characters: &mut Peekable<Chars<'_>>,
-    line: usize,
-) -> Result<TokenKind, Problem> {
-    if first == '0' && characters.peek() == Some(&'x') {
-        return Err(Problem::not_built(
-            line,
-            "hex numbers (`0x…`, D34) are in a later slice",
-        ));
+impl Scanner<'_> {
+    /// Where the next character is, or the end of the line.
+    fn offset(&mut self) -> usize {
+        self.characters
+            .peek()
+            .map_or(self.text.len(), |(offset, _)| *offset)
     }
-    let mut written = String::from(first);
-    while let Some(character) =
-        characters.next_if(|character| character.is_ascii_digit() || *character == '_')
-    {
-        written.push(character);
+
+    fn place(&self, start: usize, end: usize) -> Place {
+        place_of(self.text, self.line, start, end)
     }
-    if characters.peek().is_some_and(char::is_ascii_alphabetic) {
-        // trace D26: a narrowing such as `32_bit` starts with digits and joins a word with `_` (D35).
-        if written.ends_with('_') {
-            return Ok(TokenKind::Word(read_name_after(written, characters)));
+
+    /// From `start` up to the next character.
+    fn place_to_here(&mut self, start: usize) -> Place {
+        let end = self.offset();
+        self.place(start, end)
+    }
+
+    /// From `start` through the next character.
+    fn place_through_next(&mut self, start: usize) -> Place {
+        let end = self
+            .characters
+            .clone()
+            .nth(1)
+            .map_or(self.text.len(), |(offset, _)| offset);
+        self.place(start, end)
+    }
+
+    fn next_if_eq(&mut self, wanted: char) -> bool {
+        self.characters
+            .next_if(|(_, character)| *character == wanted)
+            .is_some()
+    }
+
+    fn peek_char(&mut self) -> Option<char> {
+        self.characters.peek().map(|(_, character)| *character)
+    }
+
+    fn scan(mut self, tokens: &mut Vec<Token>) -> Result<(), Problem> {
+        while let Some((start, character)) = self.characters.next() {
+            let kind = match character {
+                ' ' | '\t' | '\r' => continue,
+                '/' => {
+                    if self.next_if_eq('/') {
+                        return self.check_comment(start);
+                    }
+                    return Err(Problem::refused(
+                        self.place_to_here(start),
+                        "`/` has no meaning",
+                        "Radium divides with the word `div` (D34, D37)",
+                    ));
+                }
+                '#' => {
+                    return Err(Problem::refused(
+                        self.place_to_here(start),
+                        "`#` has no meaning yet",
+                        "a comment is `//` and a space; `#` is kept free (D87)",
+                    ));
+                }
+                '"' => self.read_text(start)?,
+                '$' => self.read_value_name(start)?,
+                ':' => {
+                    if self.next_if_eq(':') {
+                        TokenKind::DoubleColon
+                    } else {
+                        TokenKind::Colon
+                    }
+                }
+                '-' => {
+                    if self.next_if_eq('>') {
+                        TokenKind::Arrow
+                    } else {
+                        TokenKind::Minus
+                    }
+                }
+                ';' => TokenKind::Semicolon,
+                ',' => TokenKind::Comma,
+                '.' => TokenKind::Dot,
+                '(' => TokenKind::OpenParen,
+                ')' => TokenKind::CloseParen,
+                '[' => TokenKind::OpenBracket,
+                ']' => TokenKind::CloseBracket,
+                '=' => TokenKind::Equals,
+                '+' => TokenKind::Plus,
+                '<' => TokenKind::Less,
+                '>' => TokenKind::Greater,
+                digit if digit.is_ascii_digit() => self.read_integer(start, digit)?,
+                letter if letter.is_ascii_alphabetic() || letter == '_' => {
+                    TokenKind::Word(self.read_name(String::from(letter)))
+                }
+                other => {
+                    return Err(Problem::refused(
+                        self.place_to_here(start),
+                        format!("`{other}` has no meaning in Radium"),
+                        "outside text and comments, only Radium's own symbols and words appear (D34)",
+                    ));
+                }
+            };
+            let end = self.offset();
+            tokens.push(Token {
+                kind,
+                place: self.place(start, end),
+            });
         }
-        return Err(Problem::refused(
-            line,
-            "a number runs straight into a word; `x` needs spaces around it (D34)",
-        ));
+        Ok(())
     }
-    let digits: String = written
-        .chars()
-        .filter(|character| *character != '_')
-        .collect();
-    digits
-        .parse::<BigInt>()
-        .map(TokenKind::Integer)
-        .map_err(|_| Problem::refused(line, format!("`{written}` isn't a number")))
-}
 
-fn read_name(first: char, characters: &mut Peekable<Chars<'_>>) -> String {
-    read_name_after(String::from(first), characters)
-}
-
-fn read_name_after(start: String, characters: &mut Peekable<Chars<'_>>) -> String {
-    let mut name = start;
-    while let Some(character) =
-        characters.next_if(|character| character.is_ascii_alphanumeric() || *character == '_')
-    {
-        name.push(character);
+    /// Checks what follows `//` (D87).
+    fn check_comment(&mut self, start: usize) -> Result<(), Problem> {
+        let after = self.offset();
+        let rest = self.text.get(after..).unwrap_or_default();
+        if rest.trim().is_empty() {
+            return Err(Problem::refused(
+                self.place(start, after),
+                "a lone `//`",
+                "a comment is `//`, a space and text; paragraph breaks go in a `comment:` block (D86, D87)",
+            ));
+        }
+        if !rest.starts_with(' ') {
+            return Err(Problem::refused(
+                self.place(start, after),
+                "`//` with no space after it",
+                "a comment is `//` followed by a space (D87)",
+            )
+            .fix("`// ` followed by the text"));
+        }
+        Ok(())
     }
-    name
+
+    fn read_text(&mut self, start: usize) -> Result<TokenKind, Problem> {
+        let mut text = String::new();
+        while let Some((offset, character)) = self.characters.next() {
+            match character {
+                '"' => return Ok(TokenKind::Text(text)),
+                '\\' => {
+                    return Err(Problem::not_decided(
+                        self.place_to_here(offset),
+                        "escapes inside text",
+                    ));
+                }
+                other => text.push(other),
+            }
+        }
+        Err(Problem::not_decided(
+            self.place(start, self.text.len()),
+            "text that runs past the end of its line",
+        ))
+    }
+
+    fn read_value_name(&mut self, start: usize) -> Result<TokenKind, Problem> {
+        if self.peek_char() == Some('"') {
+            return Err(Problem::not_decided(
+                self.place_through_next(start),
+                "what may go inside a quoted name `$\"…\"` (D32)",
+            ));
+        }
+        let mut name = String::new();
+        while let Some((_, character)) = self
+            .characters
+            .next_if(|(_, character)| character.is_ascii_alphanumeric() || *character == '_')
+        {
+            name.push(character);
+        }
+        if name.is_empty() {
+            return Err(Problem::refused(
+                self.place_to_here(start),
+                "`$` with no name after it",
+                "`$` starts a value's name (D31)",
+            ));
+        }
+        Ok(TokenKind::ValueName(name))
+    }
+
+    fn read_integer(&mut self, start: usize, first: char) -> Result<TokenKind, Problem> {
+        if first == '0' && self.peek_char() == Some('x') {
+            return Err(Problem::not_built(
+                self.place_through_next(start),
+                "hex numbers (`0x…`, D34)",
+            ));
+        }
+        let mut written = String::from(first);
+        while let Some((_, character)) = self
+            .characters
+            .next_if(|(_, character)| character.is_ascii_digit() || *character == '_')
+        {
+            written.push(character);
+        }
+        if self
+            .peek_char()
+            .is_some_and(|character| character.is_ascii_alphabetic())
+        {
+            // trace D26: a narrowing such as `32_bit` starts with digits and joins a word with `_` (D35).
+            if written.ends_with('_') {
+                return Ok(TokenKind::Word(self.read_name(written)));
+            }
+            let word_end = {
+                let mut end = self.offset();
+                while let Some((offset, character)) = self.characters.next() {
+                    if !character.is_ascii_alphanumeric() {
+                        end = offset;
+                        break;
+                    }
+                    end = self.offset();
+                }
+                end
+            };
+            return Err(Problem::refused(
+                self.place(start, word_end),
+                "a number runs straight into a word",
+                "`x` needs spaces around it, so a number and a word never touch (D34)",
+            ));
+        }
+        let digits: String = written
+            .chars()
+            .filter(|character| *character != '_')
+            .collect();
+        digits
+            .parse::<BigInt>()
+            .map(TokenKind::Integer)
+            .map_err(|_| {
+                Problem::refused(
+                    self.place_to_here(start),
+                    format!("`{written}` isn't a number"),
+                    "a number is decimal digits, with `_` allowed between them (SSS: Radium 3.3)",
+                )
+            })
+    }
+
+    fn read_name(&mut self, start: String) -> String {
+        let mut name = start;
+        while let Some((_, character)) = self
+            .characters
+            .next_if(|(_, character)| character.is_ascii_alphanumeric() || *character == '_')
+        {
+            name.push(character);
+        }
+        name
+    }
 }
 
 /// How error messages name a token.

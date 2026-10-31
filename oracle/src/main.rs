@@ -1,7 +1,7 @@
 // section oracle.command:
 //! `oracle run <program.ra>`: runs one Radium program through the oracle.
 //!
-//! The program's output goes to stdout and the verdict to stderr. The exit status is 0 only when the program ran to
+//! The program's output goes to stdout, and the message, if it stopped, to stderr (D116–D119, D122). The exit status is 0 only when the program ran to
 //! the end of `fn.main`.
 
 use std::process::ExitCode;
@@ -26,7 +26,11 @@ fn main() -> ExitCode {
     };
     let outcome = oracle::run_source(&source);
     print!("{}", outcome.output());
-    eprintln!("{}", outcome.report());
+    // trace D116: the message, laid out as D117–D119 and D122 say.
+    let file = std::path::Path::new(&path)
+        .file_name()
+        .map_or_else(|| path.clone(), |name| name.to_string_lossy().into_owned());
+    eprint!("{}", outcome.render(&file, &source));
     if matches!(outcome, oracle::Outcome::Runs { .. }) {
         ExitCode::SUCCESS
     } else {

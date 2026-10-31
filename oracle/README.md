@@ -8,10 +8,28 @@ Rules for this code: [`implementation-rules/`](../implementation-rules/).
 cargo run -q -- run tests/programs/hello.ra
 ```
 
-The program's output goes to stdout and the verdict to stderr.
+The program's output goes to stdout. If it stops, its message goes to stderr, laid out as Radium's messages are
+(D116–D119, D122):
 
-Dependencies (D15 allows tools written by others): `num-bigint`, `num-integer` and `num-traits`, all MIT OR
-Apache-2.0, so integers are exact at any size (D104).
+```
+check failed: bounds_checked.ra:5:13, line 5 column 13
+ 5 |     $byte = $byte + 56; // here
+   |             ^^^^^^^^^^
+ what: `$byte` holds int[min: 0, max: 255], and this value doesn't fit
+ why:  every value stays within its bounds (D14)
+ when: it would be 256
+ because: bounds_checked.ra:4:5, line 4 column 5
+ 4 |     var $byte: int[min: 0, max: 255] = 200;
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     `$byte`'s bounds are set here
+```
+
+Besides Radium's `refused:` and `check failed:`, the oracle has three kinds of its own: `not decided:`, `not built:`
+and `gave up:`. It never says `unproven:`, since it proves nothing.
+
+Dependencies (D15 allows tools written by others), all MIT OR Apache-2.0: `num-bigint`, `num-integer` and
+`num-traits`, so integers are exact at any size (D104); `unicode-segmentation`, so columns for people count grapheme
+clusters (D117).
 
 ## Verdicts
 
@@ -30,6 +48,8 @@ Apache-2.0, so integers are exact at any size (D104).
 ```bash
 cargo test
 ```
+
+`tests/messages.rs` also checks the message layout itself.
 
 Each program in `tests/programs/` says what should happen, in comments at the top (D103). The oracle drops comments;
 the test runner reads them as text:

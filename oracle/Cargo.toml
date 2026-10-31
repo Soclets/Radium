@@ -10,6 +10,7 @@ publish = false
 num-bigint = "0.5.1"
 num-integer = "0.1.47"
 num-traits = "0.2.19"
+unicode-segmentation = "1.13.3"
 
 # implementation-rules/code-style.md (D20): pedantic clippy, warnings as errors, and no `unwrap`/`expect` or
 # panicking in trusted code. The oracle counts as trusted: it is what the design is checked against.

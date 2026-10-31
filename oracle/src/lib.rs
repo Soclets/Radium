@@ -14,7 +14,7 @@ mod outcome;
 mod parser;
 mod rules;
 
-pub use crate::outcome::Outcome;
+pub use crate::outcome::{Kind, Link, Message, Outcome, Place};
 
 use crate::interpreter::Stop;
 
@@ -26,19 +26,18 @@ pub fn run_source(source: &str) -> Outcome {
         .and_then(|program| checker::check(&program).map(|()| program));
     let program = match checked {
         Ok(program) => program,
-        Err(problem) => return problem.into(),
+        Err(problem) => {
+            return Outcome::Stopped {
+                message: problem.into_message(),
+                output: String::new(),
+            };
+        }
     };
     let (result, output) = interpreter::run(&program);
     match result {
         Ok(()) => Outcome::Runs { output },
-        Err(Stop::CheckFails { line, message }) => Outcome::CheckFails {
-            line,
-            message,
-            output,
-        },
-        Err(Stop::GaveUp { line, message }) => Outcome::GaveUp {
-            line,
-            message,
+        Err(Stop::Problem(problem)) => Outcome::Stopped {
+            message: problem.into_message(),
             output,
         },
         Err(Stop::Fault(message)) => Outcome::OracleFault { message },

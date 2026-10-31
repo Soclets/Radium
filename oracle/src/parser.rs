@@ -1,16 +1,16 @@
 // section oracle.parser:
 //! Builds the program's tree from tokens: blocks and `end` (D13), statements and `;` (D29), functions (D50–D54),
-//! control flow (D71–D77) and expressions (D34–D40).
+//! control flow (D71–D77) and expressions (D34–D40). Every node keeps its place, for messages (D117, D118).
+
+use num_bigint::{BigInt, Sign};
 
 use crate::ast::{
     Argument, Bounds, Branch, Call, CallTarget, Changeability, Expression, ExpressionKind,
     Function, Holder, LabelEntry, Labels, LoopRange, Operator, Parameter, ParameterDefault,
     Program, RangeEnd, RemainderRule, Rounding, Statement, StatementKind, TypeSpec,
 };
-use num_bigint::{BigInt, Sign};
-
 use crate::lexer::{Token, TokenKind, describe};
-use crate::outcome::Problem;
+use crate::outcome::{Place, Problem};
 
 /// Builds a whole program from its tokens.
 pub(crate) fn parse(tokens: Vec<Token>) -> Result<Program, Problem> {
@@ -34,6 +34,14 @@ struct BodyTop {
     ensures: Vec<Expression>,
 }
 
+/// The place used when a program is empty.
+const START: Place = Place {
+    line: 1,
+    byte_column: 1,
+    column: 1,
+    width: 1,
+};
+
 impl Parser {
     fn current(&self) -> Option<&Token> {
         self.tokens.get(self.position)
@@ -49,10 +57,24 @@ impl Parser {
             .map(|token| &token.kind)
     }
 
-    fn line(&self) -> usize {
+    /// The current token's place, or the last token's at the end of the program.
+    fn place(&self) -> Place {
         self.current()
             .or_else(|| self.tokens.last())
-            .map_or(1, |token| token.line)
+            .map_or(START, |token| token.place)
+    }
+
+    /// The place of the token just read.
+    fn previous(&self) -> Place {
+        self.position
+            .checked_sub(1)
+            .and_then(|index| self.tokens.get(index))
+            .map_or_else(|| self.place(), |token| token.place)
+    }
+
+    /// From `start` to the end of the token just read.
+    fn span_from(&self, start: Place) -> Place {
+        start.to(self.previous())
     }
 
     fn advance(&mut self) {
@@ -92,27 +114,28 @@ impl Parser {
             .map_or_else(|| "the end of the program".to_owned(), describe)
     }
 
-    fn refuse(&self, message: impl Into<String>) -> Problem {
-        Problem::refused(self.line(), message)
+    /// "Expected …, found …" at the current token.
+    fn expected(&self, wanted: &str, why: &str) -> Problem {
+        Problem::refused(
+            self.place(),
+            format!("expected {wanted}, found {}", self.found()),
+            why,
+        )
     }
 
-    fn expected(&self, wanted: &str) -> Problem {
-        self.refuse(format!("expected {wanted}, found {}", self.found()))
-    }
-
-    fn expect(&mut self, kind: &TokenKind, wanted: &str) -> Result<(), Problem> {
+    fn expect(&mut self, kind: &TokenKind, wanted: &str, why: &str) -> Result<(), Problem> {
         if self.eat(kind) {
             Ok(())
         } else {
-            Err(self.expected(wanted))
+            Err(self.expected(wanted, why))
         }
     }
 
-    fn expect_word(&mut self, word: &str) -> Result<(), Problem> {
+    fn expect_word(&mut self, word: &str, why: &str) -> Result<(), Problem> {
         if self.eat_word(word) {
             Ok(())
         } else {
-            Err(self.expected(&format!("`{word}`")))
+            Err(self.expected(&format!("`{word}`"), why))
         }
     }
 
@@ -120,24 +143,22 @@ impl Parser {
         if self.eat(&TokenKind::Semicolon) {
             return Ok(());
         }
-        // The `;` is missing from the end of the previous token's line, not from wherever the next token is.
-        let line = self
-            .tokens
-            .get(self.position.saturating_sub(1))
-            .map_or_else(|| self.line(), |token| token.line);
+        // The `;` is missing from the end of the token just read, not from wherever the next token is.
         Err(Problem::refused(
-            line,
-            "this statement doesn't end with `;` (D29)",
-        ))
+            self.previous(),
+            "this statement doesn't end with `;`",
+            "every statement ends with `;`; a line break never ends one (D29)",
+        )
+        .fix("add `;` after this"))
     }
 
-    fn take_word(&mut self, wanted: &str) -> Result<String, Problem> {
+    fn take_word(&mut self, wanted: &str, why: &str) -> Result<String, Problem> {
         if let Some(TokenKind::Word(word)) = self.kind() {
             let word = word.clone();
             self.advance();
             Ok(word)
         } else {
-            Err(self.expected(wanted))
+            Err(self.expected(wanted, why))
         }
     }
 
@@ -147,7 +168,7 @@ impl Parser {
             self.advance();
             Ok(name)
         } else {
-            Err(self.expected(wanted))
+            Err(self.expected(wanted, "a value's name starts with `$` (D31)"))
         }
     }
 }
@@ -155,91 +176,122 @@ impl Parser {
 impl Parser {
     fn program(&mut self) -> Result<Program, Problem> {
         let mut functions = Vec::new();
-        let mut main = None;
+        let mut main: Option<Function> = None;
         while self.current().is_some() {
             if self.at_word("fn") {
                 let function = self.function()?;
                 if !function.is_main {
                     functions.push(function);
-                } else if main.is_some() {
+                } else if let Some(first) = &main {
                     return Err(Problem::refused(
-                        function.line,
-                        "a program has exactly one `fn.main` (D101)",
-                    ));
+                        function.place,
+                        "a second `fn.main`",
+                        "a program has exactly one `fn.main`, where it starts (D101)",
+                    )
+                    .because(first.place, "the program's `fn.main` is here"));
                 } else {
                     main = Some(function);
                 }
             } else if self.at_word("main") {
-                return Err(self
-                    .refuse("the program starts at `fn.main [] -> void:` … `end fn.main` (D101)"));
+                return Err(Problem::refused(
+                    self.place(),
+                    "`main:` is no longer how a program starts",
+                    "the program starts at `fn.main`, a function nothing may call (D101)",
+                )
+                .fix("`fn.main [] -> void:` … `end fn.main`"));
             } else if self.at_word("struct") || self.at_word("union") {
                 return Err(Problem::not_built(
-                    self.line(),
-                    "`struct` and `union.tagged` are in the oracle's second slice",
+                    self.place(),
+                    "`struct` and `union.tagged` (the oracle's second slice)",
                 ));
             } else {
-                return Err(self.refuse(format!(
-                    "{} can't start a top-level item; the oracle reads `fn` here",
-                    self.found()
-                )));
+                return Err(Problem::refused(
+                    self.place(),
+                    format!("{} can't start a top-level item", self.found()),
+                    "the top level holds functions; the oracle reads `fn` here (D51, D101)",
+                ));
             }
         }
         let main = main.ok_or_else(|| {
             Problem::refused(
-                1,
-                "a program needs `fn.main [] -> void:` … `end fn.main` (D101)",
+                START,
+                "this program has no `fn.main`",
+                "a program starts at its one `fn.main [] -> void:` … `end fn.main` (D101)",
             )
         })?;
         Ok(Program { functions, main })
     }
 
     /// Reads `end fn.main` (D101).
-    fn end_main_line(&mut self) -> Result<(), Problem> {
-        let line = self.line();
+    fn end_main_line(&mut self, opener: Place) -> Result<(), Problem> {
+        let start = self.place();
         let matched = self.eat_word("end")
             && self.eat_word("fn")
             && self.eat(&TokenKind::Dot)
             && self.eat_word("main");
-        if !matched || self.current().is_some_and(|token| token.line == line) {
+        if !matched
+            || self
+                .current()
+                .is_some_and(|token| token.place.line == start.line)
+        {
             return Err(Problem::refused(
-                line,
-                "this `end` should be `end fn.main` (D13, D101)",
-            ));
+                self.span_from(start),
+                "this `end` doesn't match its opener",
+                "every `end` matches its opener exactly (D13)",
+            )
+            .fix("`end fn.main`")
+            .because(opener, "the block opens here"));
         }
         Ok(())
     }
 
     /// Reads `end kind` or `end kind name`, which must match its opener exactly (D13).
-    fn end_line(&mut self, kind: &str, name: Option<&str>) -> Result<(), Problem> {
-        let line = self.line();
+    fn end_line(&mut self, kind: &str, name: Option<&str>, opener: Place) -> Result<(), Problem> {
+        let start = self.place();
         let wanted = name.map_or_else(
             || format!("`end {kind}`"),
             |name| format!("`end {kind} {name}`"),
         );
-        let mismatch = || Problem::refused(line, format!("this `end` should be {wanted} (D13)"));
         if !self.eat_word("end") {
-            return Err(self.expected(&format!("{wanted} (D13)")));
+            return Err(self
+                .expected(&wanted, "every block closes with `end` and its kind (D13)")
+                .because(opener, "the block opens here"));
         }
-        if !self.eat_word(kind) {
-            return Err(mismatch());
-        }
-        if let Some(name) = name
-            && !self.eat_word(name)
+        let matched = self.eat_word(kind) && name.is_none_or(|name| self.eat_word(name));
+        if !matched
+            || self
+                .current()
+                .is_some_and(|token| token.place.line == start.line)
         {
-            return Err(mismatch());
-        }
-        if self.current().is_some_and(|token| token.line == line) {
-            return Err(mismatch());
+            // Point at the whole `end` line as written.
+            while self
+                .current()
+                .is_some_and(|token| token.place.line == start.line)
+            {
+                self.advance();
+            }
+            return Err(Problem::refused(
+                self.span_from(start),
+                "this `end` doesn't match its opener",
+                "every `end` matches its opener exactly (D13)",
+            )
+            .fix(wanted)
+            .because(opener, "the block opens here"));
         }
         Ok(())
     }
 
     /// Reads statements up to the `end` or `else` that closes the block.
-    fn statements(&mut self) -> Result<Vec<Statement>, Problem> {
+    fn statements(&mut self, opener: Place) -> Result<Vec<Statement>, Problem> {
         let mut statements = Vec::new();
         while !self.at_word("end") && !self.at_word("else") {
             if self.current().is_none() {
-                return Err(self.refuse("this block never reaches its `end` (D13)"));
+                return Err(Problem::refused(
+                    self.place(),
+                    "the program ends inside a block",
+                    "every block closes with `end` and its kind (D13)",
+                )
+                .because(opener, "the block opens here"));
             }
             statements.push(self.statement()?);
         }
@@ -247,11 +299,17 @@ impl Parser {
     }
 
     fn statement(&mut self) -> Result<Statement, Problem> {
-        let line = self.line();
+        let start = self.place();
         let word = match self.kind() {
             Some(TokenKind::Word(word)) => word.clone(),
-            Some(TokenKind::ValueName(_)) => return self.assignment(line),
-            _ => return Err(self.refuse(format!("{} doesn't start a statement", self.found()))),
+            Some(TokenKind::ValueName(_)) => return self.assignment(start),
+            _ => {
+                return Err(Problem::refused(
+                    start,
+                    format!("{} doesn't start a statement", self.found()),
+                    "a statement starts with a keyword, a value's `$name` or a call (SSS: Radium 1.3)",
+                ));
+            }
         };
         let kind = match word.as_str() {
             "var" | "const" => self.declaration()?,
@@ -267,41 +325,46 @@ impl Parser {
                     return Err(problem);
                 }
                 if self.kind_after(1) != Some(&TokenKind::OpenParen) {
-                    return Err(self.refuse(format!("`{word}` doesn't start a statement")));
+                    return Err(Problem::refused(
+                        start,
+                        format!("`{word}` doesn't start a statement"),
+                        "a statement starts with a keyword, a value's `$name` or a call (SSS: Radium 1.3)",
+                    ));
                 }
                 StatementKind::Call(self.call_statement()?)
             }
         };
-        Ok(Statement { line, kind })
+        Ok(Statement {
+            place: self.span_from(start),
+            kind,
+        })
     }
 
     /// Words that can't start a statement here, and why.
     fn misplaced_statement(&self, word: &str) -> Option<Problem> {
-        let line = self.line();
+        let place = self.place();
         let problem = match word {
-            "match" => Problem::not_built(line, "`match` is in the oracle's second slice (D72)"),
-            "shield" => Problem::not_decided(line, "how a shield is written is open (D6)"),
-            "fails" => Problem::not_decided(
-                line,
-                "the `fails … exactly when` wording is a placeholder (D56)",
-            ),
-            "invariant" | "assert" => Problem::not_decided(
-                line,
-                "the spelling of loop invariants and asserts is open (D4)",
-            ),
+            "match" => Problem::not_built(place, "`match` (the oracle's second slice, D72)"),
+            "shield" => Problem::not_decided(place, "how a shield is written (D6)"),
+            "fails" => Problem::not_decided(place, "the `fails … exactly when` wording (D56)"),
+            "invariant" | "assert" => {
+                Problem::not_decided(place, "the spelling of loop invariants and asserts (D4)")
+            }
             "requires" | "ensures" | "labels" | "defaults" => Problem::refused(
-                line,
-                format!(
-                    "`{word}` belongs at the top of a function's body, before any other line (D53, D54)"
-                ),
+                place,
+                format!("`{word}` after the top of the body"),
+                "a body starts with `labels`, then `defaults`, then contracts, before any other line (D53, D54)",
             ),
             "decreases" => Problem::refused(
-                line,
-                "`decreases` belongs at the top of a `while` loop's body (D75)",
+                place,
+                "`decreases` here",
+                "`decreases` is the first line of a `while` loop's body (D75)",
             ),
-            "else" | "end" => {
-                Problem::refused(line, format!("this `{word}` has no block to close (D13)"))
-            }
+            "else" | "end" => Problem::refused(
+                place,
+                format!("this `{word}` has no block to close"),
+                "`else` and `end` close a block that's open (D13, D71)",
+            ),
             _ => return None,
         };
         Some(problem)
@@ -310,21 +373,26 @@ impl Parser {
 
 impl Parser {
     fn declaration(&mut self) -> Result<StatementKind, Problem> {
-        let line = self.line();
+        let start = self.place();
         let holder = if self.eat_word("const") {
             Holder::Const
         } else {
-            self.expect_word("var")?;
+            self.expect_word("var", "values are declared with `var` or `const` (D30)")?;
             if self.eat(&TokenKind::Dot) {
-                match self.take_word("`immut` or `mut` after `var.`")?.as_str() {
+                match self
+                    .take_word(
+                        "`immut` or `mut` after `var.`",
+                        "`var` narrows to `var.immut` or `var.mut` (D30)",
+                    )?
+                    .as_str()
+                {
                     "immut" => Holder::VarImmut,
                     "mut" => Holder::VarMut,
                     other => {
                         return Err(Problem::refused(
-                            line,
-                            format!(
-                                "`var.{other}` isn't a kind of value: there are `var`, `var.immut`, `var.mut` and `const` (D30)"
-                            ),
+                            self.span_from(start),
+                            format!("`var.{other}` isn't a kind of value"),
+                            "values are `var`, `var.immut`, `var.mut` or `const` (D30)",
                         ));
                     }
                 }
@@ -332,12 +400,14 @@ impl Parser {
                 Holder::Var
             }
         };
-        let name = self.take_value_name("a value's name, starting with `$` (D31)")?;
+        let name = self.take_value_name("a value's name, starting with `$`")?;
         // trace D108: every value states its type, or `infer`.
         if !self.eat(&TokenKind::Colon) {
-            return Err(
-                self.refuse("a value states its type, or `: infer` to have it worked out (D108)")
-            );
+            return Err(Problem::refused(
+                self.previous(),
+                format!("`${name}` has no type"),
+                "every value states its type, or `: infer` to have it worked out (D108)",
+            ));
         }
         let type_spec = if self.eat_word("infer") {
             None
@@ -345,11 +415,16 @@ impl Parser {
             Some(self.type_spec()?)
         };
         if self.at(&TokenKind::Semicolon) {
-            return Err(
-                self.not_decided_here("declaring a value without a starting value isn't decided")
-            );
+            return Err(Problem::not_decided(
+                self.span_from(start),
+                "declaring a value without a starting value",
+            ));
         }
-        self.expect(&TokenKind::Equals, "`=` and a starting value (D41)")?;
+        self.expect(
+            &TokenKind::Equals,
+            "`=` and a starting value",
+            "a declaration sets its value with `=` (D41)",
+        )?;
         let value = self.expression()?;
         self.expect_semicolon()?;
         Ok(StatementKind::Declare {
@@ -360,67 +435,81 @@ impl Parser {
         })
     }
 
-    fn not_decided_here(&self, message: &str) -> Problem {
-        Problem::not_decided(self.line(), message)
-    }
-
-    fn assignment(&mut self, line: usize) -> Result<Statement, Problem> {
+    fn assignment(&mut self, start: Place) -> Result<Statement, Problem> {
         let name = self.take_value_name("a value's name")?;
-        self.expect(&TokenKind::Equals, "`=`: it sets a value (D41)")?;
+        self.expect(
+            &TokenKind::Equals,
+            "`=`",
+            "`=` sets a value; comparing is `equal` (D41)",
+        )?;
         let value = self.expression()?;
         self.expect_semicolon()?;
         Ok(Statement {
-            line,
+            place: self.span_from(start),
             kind: StatementKind::Assign { name, value },
         })
     }
 
     fn if_chain(&mut self) -> Result<StatementKind, Problem> {
-        self.expect_word("if")?;
-        let mut branches = vec![self.branch()?];
+        let opener = self.place();
+        self.expect_word("if", "SSS: Radium 5.2 (D71)")?;
+        let mut branches = vec![self.branch(opener)?];
         let mut else_body = None;
         while self.eat_word("else") {
             if self.eat_word("if") {
-                branches.push(self.branch()?);
+                branches.push(self.branch(opener)?);
             } else {
-                self.expect(&TokenKind::Colon, "`:` after `else` (D71)")?;
-                else_body = Some(self.statements()?);
+                self.expect(
+                    &TokenKind::Colon,
+                    "`:` after `else`",
+                    "a block's opening line ends with `:` (D13, D71)",
+                )?;
+                else_body = Some(self.statements(opener)?);
                 break;
             }
         }
-        self.end_line("if", None)?;
+        self.end_line("if", None, opener)?;
         Ok(StatementKind::If {
             branches,
             else_body,
         })
     }
 
-    fn branch(&mut self) -> Result<Branch, Problem> {
+    fn branch(&mut self, opener: Place) -> Result<Branch, Problem> {
         let condition = self.expression()?;
-        self.expect(&TokenKind::Colon, "`:` after the condition (D13)")?;
-        let body = self.statements()?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after the condition",
+            "a block's opening line ends with `:` (D13)",
+        )?;
+        let body = self.statements(opener)?;
         Ok(Branch { condition, body })
     }
 
     fn for_loop(&mut self) -> Result<StatementKind, Problem> {
-        self.expect_word("for")?;
+        let opener = self.place();
+        self.expect_word("for", "SSS: Radium 6.1 (D74)")?;
         let loop_name = if self.at_any_word() {
-            Some(self.take_word("a loop name")?)
+            Some(self.take_word("a loop name", "a loop may be named (D77)")?)
         } else {
             None
         };
-        let variable = self.take_value_name("the loop's value, starting with `$` (D74)")?;
-        self.expect_word("in")?;
+        let variable = self.take_value_name("the loop's value, starting with `$`")?;
+        self.expect_word("in", "every loop is `for $x in …:` (D74)")?;
         if matches!(self.kind(), Some(TokenKind::ValueName(_))) {
             return Err(Problem::not_built(
-                self.line(),
-                "going through a collection (D74) is in a later slice",
+                self.place(),
+                "going through a collection (D74)",
             ));
         }
         let range = self.loop_range()?;
-        self.expect(&TokenKind::Colon, "`:` after the range (D13)")?;
-        let body = self.statements()?;
-        self.end_line("for", loop_name.as_deref())?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after the range",
+            "a block's opening line ends with `:` (D13)",
+        )?;
+        let body = self.statements(opener)?;
+        self.end_line("for", loop_name.as_deref(), opener)?;
         Ok(StatementKind::For {
             loop_name,
             variable,
@@ -430,19 +519,30 @@ impl Parser {
     }
 
     fn loop_range(&mut self) -> Result<LoopRange, Problem> {
-        let range_line = self.line();
-        self.expect_word("range")?;
-        self.expect(&TokenKind::OpenBracket, "`[` after `range` (D74)")?;
+        let start = self.place();
+        self.expect_word("range", "a loop goes through a `range[…]` (D74)")?;
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[` after `range`",
+            "`[ ]` describes, so a range's labels go inside it (D50, D74)",
+        )?;
         let mut from = None;
         let mut end = None;
         let mut step_by = None;
-        let mut last_place = 0_u8;
+        let mut last_order = 0_u8;
         loop {
-            let line = self.line();
-            let label = self.take_word("a label: `from:`, `to:`, `before:` or `step_by:` (D73)")?;
-            self.expect(&TokenKind::Colon, "`:` after the label (D54)")?;
+            let label_place = self.place();
+            let label = self.take_word(
+                "a label: `from:`, `to:`, `before:` or `step_by:`",
+                "a range's labels are `from:`, `to:`, `before:` and `step_by:` (D73)",
+            )?;
+            self.expect(
+                &TokenKind::Colon,
+                "`:` after the label",
+                "a label is a word and `:` (D54)",
+            )?;
             let value = self.expression()?;
-            let place = match label.as_str() {
+            let order = match label.as_str() {
                 "from" => {
                     from = Some(value);
                     1
@@ -450,7 +550,8 @@ impl Parser {
                 "to" | "before" => {
                     if end.is_some() {
                         return Err(Problem::refused(
-                            line,
+                            label_place,
+                            "a second end for this range",
                             "a range has `to:` or `before:`, not both (D73)",
                         ));
                     }
@@ -467,41 +568,56 @@ impl Parser {
                 }
                 other => {
                     return Err(Problem::refused(
-                        line,
-                        format!(
-                            "`{other}:` isn't a range label: they are `from:`, `to:`, `before:` and `step_by:` (D73)"
-                        ),
+                        label_place,
+                        format!("`{other}:` isn't a range label"),
+                        "a range's labels are `from:`, `to:`, `before:` and `step_by:` (D73)",
                     ));
                 }
             };
-            if place <= last_place {
+            if order <= last_order {
                 return Err(Problem::refused(
-                    line,
-                    "range labels go in their declared order: `from:`, then `to:` or `before:`, then `step_by:` (D54, D113)",
+                    label_place,
+                    format!("`{label}:` is out of order"),
+                    "range labels go `from:`, then `to:` or `before:`, then `step_by:` (D54, D113)",
                 ));
             }
-            last_place = place;
+            last_order = order;
             if !self.eat(&TokenKind::Comma) {
                 break;
             }
         }
-        self.expect(&TokenKind::CloseBracket, "`]` closing the range")?;
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the range",
+            "a range is `range[…]` (D74)",
+        )?;
+        let place = self.span_from(start);
         let from = from.ok_or_else(|| {
             Problem::refused(
-                range_line,
-                "a range starts with `from:`; it is required (D113)",
+                place,
+                "this range has no `from:`",
+                "a range starts with `from:`, so a loop's start is always written (D113)",
             )
         })?;
         let end = end.ok_or_else(|| {
-            Problem::refused(range_line, "a range needs `to:` or `before:` (D73)")
+            Problem::refused(
+                place,
+                "this range has no end",
+                "a range needs `to:` or `before:` (D73)",
+            )
         })?;
         Ok(LoopRange { from, end, step_by })
     }
 
     fn while_loop(&mut self) -> Result<StatementKind, Problem> {
-        self.expect_word("while")?;
+        let opener = self.place();
+        self.expect_word("while", "SSS: Radium 6.2 (D75)")?;
         let condition = self.expression()?;
-        self.expect(&TokenKind::Colon, "`:` after the condition (D13)")?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after the condition",
+            "a block's opening line ends with `:` (D13)",
+        )?;
         let decreases = if self.eat_word("decreases") {
             let measure = self.expression()?;
             self.expect_semicolon()?;
@@ -509,8 +625,8 @@ impl Parser {
         } else {
             None
         };
-        let body = self.statements()?;
-        self.end_line("while", None)?;
+        let body = self.statements(opener)?;
+        self.end_line("while", None, opener)?;
         Ok(StatementKind::While {
             condition,
             decreases,
@@ -519,23 +635,31 @@ impl Parser {
     }
 
     fn forever_loop(&mut self) -> Result<StatementKind, Problem> {
-        self.expect_word("forever")?;
+        let opener = self.place();
+        self.expect_word("forever", "SSS: Radium 6.3 (D76)")?;
         let loop_name = if self.at_any_word() {
-            Some(self.take_word("a loop name")?)
+            Some(self.take_word("a loop name", "a loop may be named (D77)")?)
         } else {
             None
         };
-        self.expect(&TokenKind::Colon, "`:` after `forever` (D76)")?;
-        let body = self.statements()?;
-        self.end_line("forever", loop_name.as_deref())?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after `forever`",
+            "a block's opening line ends with `:` (D13, D76)",
+        )?;
+        let body = self.statements(opener)?;
+        self.end_line("forever", loop_name.as_deref(), opener)?;
         Ok(StatementKind::Forever { loop_name, body })
     }
 
     fn return_statement(&mut self) -> Result<StatementKind, Problem> {
-        self.expect_word("return")?;
+        let start = self.place();
+        self.expect_word("return", "SSS: Radium 7.4 (D95)")?;
         if self.at(&TokenKind::Semicolon) {
-            return Err(self.refuse(
-                "a bare `return;` is refused; a `-> void` function returns with `return void;` (D100)",
+            return Err(Problem::refused(
+                self.span_from(start),
+                "a bare `return;`",
+                "every `return` says what it gives back; a `-> void` function returns with `return void;` (D100)",
             ));
         }
         let value = if self.eat_word("void") {
@@ -548,9 +672,9 @@ impl Parser {
     }
 
     fn break_statement(&mut self) -> Result<StatementKind, Problem> {
-        self.expect_word("break")?;
+        self.expect_word("break", "SSS: Radium 6.4 (D77)")?;
         let loop_name = if self.at_any_word() {
-            Some(self.take_word("a loop name")?)
+            Some(self.take_word("a loop name", "`break name;` names a loop (D77)")?)
         } else {
             None
         };
@@ -567,20 +691,25 @@ impl Parser {
     }
 
     fn call(&mut self) -> Result<Call, Problem> {
-        let line = self.line();
+        let start = self.place();
         let target = if self.eat_word("std") {
-            self.expect(&TokenKind::DoubleColon, "`::` after `std`")?;
-            let name = self.take_word("a name from `std`")?;
+            self.expect(
+                &TokenKind::DoubleColon,
+                "`::` after `std`",
+                "`std::` marks the standard compound (D23)",
+            )?;
+            let name =
+                self.take_word("a name from `std`", "`std::` is followed by a name (D23)")?;
             if name != "print" {
                 return Err(Problem::not_built(
-                    line,
-                    format!("`std::{name}`: the oracle's `std` has only `print` so far"),
+                    self.span_from(start),
+                    format!("`std::{name}` (the oracle's `std` has only `print` so far)"),
                 ));
             }
             if self.at(&TokenKind::Dot) {
                 return Err(Problem::not_built(
-                    line,
-                    "narrowings of `std::print` aren't in the oracle yet (D57)",
+                    self.place(),
+                    "narrowings of `std::print` (D57)",
                 ));
             }
             CallTarget::Print
@@ -588,18 +717,22 @@ impl Parser {
             self.advance();
             self.advance();
             CallTarget::Own {
-                name: self.take_word("a function's name after `my.`")?,
+                name: self.take_word(
+                    "a function's name after `my.`",
+                    "`my.` marks the writer's own function (D43)",
+                )?,
                 marked: true,
             }
         } else {
             CallTarget::Own {
-                name: self.take_word("a function's name")?,
+                name: self.take_word("a function's name", "a call names a function (D50)")?,
                 marked: false,
             }
         };
         self.expect(
             &TokenKind::OpenParen,
-            "`(`: a call runs, so it uses `( )` (D50)",
+            "`(`",
+            "a call runs something, so it uses `( )` (D50)",
         )?;
         let mut arguments = Vec::new();
         if !self.eat(&TokenKind::CloseParen) {
@@ -609,19 +742,23 @@ impl Parser {
                     break;
                 }
             }
-            self.expect(&TokenKind::CloseParen, "`)` closing the call")?;
+            self.expect(
+                &TokenKind::CloseParen,
+                "`)` closing the call",
+                "a call's arguments go inside `( )` (D50)",
+            )?;
         }
         Ok(Call {
-            line,
+            place: self.span_from(start),
             target,
             arguments,
         })
     }
 
     fn argument(&mut self) -> Result<Argument, Problem> {
-        let line = self.line();
+        let start = self.place();
         let label = if self.at_any_word() && self.kind_after(1) == Some(&TokenKind::Colon) {
-            let label = self.take_word("a label")?;
+            let label = self.take_word("a label", "a label is a word and `:` (D54)")?;
             self.advance();
             Some(label)
         } else {
@@ -634,29 +771,50 @@ impl Parser {
             );
             match word.as_str() {
                 "Give" | "Copy" | "Lend" => {
-                    return Err(self.refuse(
-                        "the oracle's first slice has only integers and `bool`, which are always copied and take no ownership word (D92)",
+                    return Err(Problem::refused(
+                        self.place(),
+                        format!("`{word}` on a value that is always copied"),
+                        "integers and `bool` are always copied, so they take no ownership word (D92)",
                     ));
                 }
                 "give" | "copy" | "lend" if followed_by_value => {
-                    return Err(self.refuse(
-                        "ownership words start with a capital: `Give`, `Copy`, `Lend` (D84)",
-                    ));
+                    let fixed = capitalised(word);
+                    return Err(Problem::refused(
+                        self.place(),
+                        format!("`{word}` in lowercase"),
+                        "ownership words start with a capital, so every hand-off stands out (D84)",
+                    )
+                    .fix(format!("`{fixed}`")));
                 }
                 _ => {}
             }
         }
         let value = self.expression()?;
-        Ok(Argument { line, label, value })
+        Ok(Argument {
+            place: self.span_from(start),
+            label,
+            value,
+        })
     }
+}
+
+/// `give` → `Give` (D84).
+fn capitalised(word: &str) -> String {
+    let mut characters = word.chars();
+    characters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(characters).collect()
+    })
 }
 
 impl Parser {
     fn function(&mut self) -> Result<Function, Problem> {
-        let line = self.line();
-        self.expect_word("fn")?;
+        let start = self.place();
+        self.expect_word("fn", "a function starts with `fn` (D51)")?;
         let narrowing = if self.eat(&TokenKind::Dot) {
-            Some(self.take_word("`pure` or `main` after `fn.`")?)
+            Some(self.take_word(
+                "`pure` or `main` after `fn.`",
+                "`fn` narrows to `fn.pure` (D51) or `fn.main` (D101)",
+            )?)
         } else {
             None
         };
@@ -666,24 +824,32 @@ impl Parser {
             Some("main") => (false, true),
             Some(other) => {
                 return Err(Problem::refused(
-                    line,
-                    format!(
-                        "`fn.{other}` isn't a kind of function: there are `fn`, `fn.pure` (D51) and `fn.main` (D101)"
-                    ),
+                    self.span_from(start),
+                    format!("`fn.{other}` isn't a kind of function"),
+                    "functions are `fn`, `fn.pure` (D51) and `fn.main` (D101)",
                 ));
             }
         };
         if self.at(&TokenKind::Dot) {
-            return Err(self.refuse("a function takes one narrowing: `fn.pure` or `fn.main`"));
+            return Err(Problem::refused(
+                self.place(),
+                "a second narrowing of `fn`",
+                "a function takes one narrowing: `fn.pure` or `fn.main` (D51, D101)",
+            ));
         }
         let name = if is_main {
             "fn.main".to_owned()
         } else {
-            self.take_word("the function's name")?
+            self.take_word(
+                "the function's name",
+                "`fn` is followed by the function's name (D51)",
+            )?
         };
+        let place = self.span_from(start);
         self.expect(
             &TokenKind::OpenBracket,
-            "`[` before the parameters: a definition describes, so it uses `[ ]` (D50)",
+            "`[` before the parameters",
+            "a definition describes, so its parameters go in `[ ]` (D50)",
         )?;
         let mut parameters = Vec::new();
         if !self.eat(&TokenKind::CloseBracket) {
@@ -693,10 +859,16 @@ impl Parser {
                     break;
                 }
             }
-            self.expect(&TokenKind::CloseBracket, "`]` after the parameters")?;
+            self.expect(
+                &TokenKind::CloseBracket,
+                "`]` after the parameters",
+                "a definition's parameters go in `[ ]` (D50)",
+            )?;
         }
         if !self.eat(&TokenKind::Arrow) {
-            return Err(self.refuse(
+            return Err(Problem::refused(
+                self.previous(),
+                format!("`{name}` doesn't say what it gives back"),
                 "every function states its result after `->`; one that gives nothing back says `-> void` (D98, D99)",
             ));
         }
@@ -705,17 +877,21 @@ impl Parser {
         } else {
             Some(self.type_spec()?)
         };
-        self.expect(&TokenKind::Colon, "`:` ending the function's header (D13)")?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` ending the function's header",
+            "a block's opening line ends with `:` (D13)",
+        )?;
         let top = self.body_top()?;
-        let body = self.statements()?;
+        let body = self.statements(place)?;
         if is_main {
-            self.end_main_line()?;
+            self.end_main_line(place)?;
         } else {
-            self.end_line("fn", Some(&name))?;
+            self.end_line("fn", Some(&name), place)?;
         }
         Ok(Function {
             name,
-            line,
+            place,
             pure,
             is_main,
             parameters,
@@ -729,21 +905,30 @@ impl Parser {
     }
 
     fn parameter(&mut self) -> Result<Parameter, Problem> {
-        let line = self.line();
+        let start = self.place();
         let changeability = if self.eat_word("var") {
             if self.eat(&TokenKind::Dot) {
-                match self.take_word("`mut` after `var.`")?.as_str() {
+                match self
+                    .take_word(
+                        "`mut` after `var.`",
+                        "a parameter may be `var` or `var.mut` (D31)",
+                    )?
+                    .as_str()
+                {
                     "mut" => Changeability::MustChange,
                     "immut" => {
                         return Err(Problem::refused(
-                            line,
-                            "a parameter is `var.immut` already; write it bare (D31, D39)",
-                        ));
+                            self.span_from(start),
+                            "`var.immut` on a parameter",
+                            "a parameter is `var.immut` already, and a default is never spelled out (D31, D39)",
+                        )
+                        .fix("write the parameter bare"));
                     }
                     other => {
                         return Err(Problem::refused(
-                            line,
-                            format!("`var.{other}` isn't a kind of parameter (D31)"),
+                            self.span_from(start),
+                            format!("`var.{other}` isn't a kind of parameter"),
+                            "a parameter is bare, `var` or `var.mut` (D31)",
                         ));
                     }
                 }
@@ -753,13 +938,17 @@ impl Parser {
         } else {
             Changeability::Fixed
         };
-        let name = self.take_value_name("a parameter's name, starting with `$` (D31)")?;
-        self.expect(&TokenKind::Colon, "`:` and the parameter's type")?;
+        let name = self.take_value_name("a parameter's name, starting with `$`")?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` and the parameter's type",
+            "a parameter is `$name: type` (D50)",
+        )?;
         self.refuse_parameter_ownership()?;
         let type_spec = self.type_spec()?;
         Ok(Parameter {
             name,
-            line,
+            place: self.span_from(start),
             changeability,
             type_spec,
         })
@@ -769,22 +958,33 @@ impl Parser {
         let Some(TokenKind::Word(word)) = self.kind() else {
             return Ok(());
         };
-        let message = match word.as_str() {
-            "Lent" if self.kind_after(1) != Some(&TokenKind::Dot) => {
-                "`Lent` is the default for a parameter; write the bare parameter (D92)"
-            }
-            "Lent" | "Given" => {
-                "the oracle's first slice has only integers and `bool`, which are always copied and take no ownership word (D92)"
-            }
-            "Lend" | "Give" | "Copy" => {
-                "parameters say `Lent.mut` or `Given`; `Lend`, `Give` and `Copy` are for calls (D91)"
-            }
-            "lent" | "given" | "lend" | "give" | "copy" => {
-                "ownership words start with a capital (D84)"
-            }
+        let place = self.place();
+        let problem = match word.as_str() {
+            "Lent" if self.kind_after(1) != Some(&TokenKind::Dot) => Problem::refused(
+                place,
+                "`Lent` written out",
+                "a bare parameter is lent, and a default is never spelled out (D39, D92)",
+            )
+            .fix("write the parameter bare"),
+            "Lent" | "Given" => Problem::refused(
+                place,
+                format!("`{word}` on a value that is always copied"),
+                "integers and `bool` are always copied, so they take no ownership word (D92)",
+            ),
+            "Lend" | "Give" | "Copy" => Problem::refused(
+                place,
+                format!("`{word}` in a parameter"),
+                "parameters say `Lent.mut` or `Given`; `Lend`, `Give` and `Copy` are for calls (D91)",
+            ),
+            "lent" | "given" | "lend" | "give" | "copy" => Problem::refused(
+                place,
+                format!("`{word}` in lowercase"),
+                "ownership words start with a capital (D84)",
+            )
+            .fix(format!("`{}`", capitalised(word))),
             _ => return Ok(()),
         };
-        Err(self.refuse(message))
+        Err(problem)
     }
 
     fn body_top(&mut self) -> Result<BodyTop, Problem> {
@@ -796,7 +996,7 @@ impl Parser {
         };
         let mut stage = 0_u8;
         loop {
-            let line = self.line();
+            let place = self.place();
             let next_stage = if self.at_word("labels") {
                 1
             } else if self.at_word("defaults") {
@@ -805,20 +1005,21 @@ impl Parser {
                 3
             } else if self.at_word("fails") {
                 return Err(Problem::not_decided(
-                    line,
-                    "the `fails … exactly when` wording is a placeholder (D56)",
+                    place,
+                    "the `fails … exactly when` wording (D56)",
                 ));
             } else if self.at_word("decreases") {
                 return Err(Problem::not_built(
-                    line,
-                    "`decreases` on a function (D4, D7) is in a later slice",
+                    place,
+                    "`decreases` on a function (D4, D7)",
                 ));
             } else {
                 break;
             };
             if next_stage < stage || (next_stage == stage && next_stage < 3) {
                 return Err(Problem::refused(
-                    line,
+                    place,
+                    "this line is out of order at the top of the body",
                     "the top of a body is `labels`, then `defaults`, then contracts, each line once (D53, D54)",
                 ));
             }
@@ -843,64 +1044,92 @@ impl Parser {
     }
 
     fn labels_line(&mut self) -> Result<Labels, Problem> {
-        let line = self.line();
-        self.expect_word("labels")?;
+        let start = self.place();
+        self.expect_word("labels", "SSS: Radium 7.3 (D54)")?;
         let any_order = if self.eat(&TokenKind::Dot) {
-            match self.take_word("`any_order` after `labels.`")?.as_str() {
+            match self
+                .take_word(
+                    "`any_order` after `labels.`",
+                    "`labels` narrows to `labels.any_order` (D54)",
+                )?
+                .as_str()
+            {
                 "any_order" => true,
                 "in_order" => {
                     return Err(Problem::refused(
-                        line,
-                        "`labels.in_order` spells out the default; write `labels` (D39, D54)",
-                    ));
+                        self.span_from(start),
+                        "`labels.in_order` spells out the default",
+                        "bare `labels` keeps the declared order, and a default is never spelled out (D39, D54)",
+                    )
+                    .fix("`labels`"));
                 }
                 other => {
                     return Err(Problem::refused(
-                        line,
-                        format!("`labels.{other}` isn't a kind of labels line (D54)"),
+                        self.span_from(start),
+                        format!("`labels.{other}` isn't a kind of labels line"),
+                        "a labels line is `labels` or `labels.any_order` (D54)",
                     ));
                 }
             }
         } else {
             false
         };
-        self.expect(&TokenKind::OpenBracket, "`[` after `labels` (D54)")?;
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[` after `labels`",
+            "the labels go in `[ ]` (D50, D54)",
+        )?;
         let mut entries = Vec::new();
         loop {
             let parameter = self.take_value_name("a parameter's `$name`")?;
-            self.expect_word("as")?;
-            let label = self.take_word("the label callers write")?;
+            self.expect_word("as", "a label entry is `$parameter as label` (D54)")?;
+            let label = self.take_word(
+                "the label callers write",
+                "a label entry is `$parameter as label` (D54)",
+            )?;
             entries.push(LabelEntry { parameter, label });
             if !self.eat(&TokenKind::Comma) {
                 break;
             }
         }
-        self.expect(&TokenKind::CloseBracket, "`]` closing the labels")?;
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the labels",
+            "the labels go in `[ ]` (D54)",
+        )?;
         self.expect_semicolon()?;
         Ok(Labels {
-            line,
+            place: self.span_from(start),
             any_order,
             entries,
         })
     }
 
     fn defaults_line(&mut self) -> Result<Vec<ParameterDefault>, Problem> {
-        self.expect_word("defaults")?;
+        self.expect_word("defaults", "SSS: Radium 7.3 (D54)")?;
         if self.at(&TokenKind::Dot) {
             return Err(Problem::not_built(
-                self.line(),
-                "`defaults.fixed` (D57) is for function collections, in a later slice",
+                self.place(),
+                "`defaults.fixed` (D57), which is for function collections",
             ));
         }
-        self.expect(&TokenKind::OpenBracket, "`[` after `defaults` (D54)")?;
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[` after `defaults`",
+            "the defaults go in `[ ]` (D50, D54)",
+        )?;
         let mut defaults = Vec::new();
         loop {
-            let line = self.line();
+            let start = self.place();
             let parameter = self.take_value_name("a parameter's `$name`")?;
-            self.expect(&TokenKind::Equals, "`=` and the default value (D54)")?;
+            self.expect(
+                &TokenKind::Equals,
+                "`=` and the default value",
+                "a default is `$parameter = value` (D54)",
+            )?;
             let value = self.expression()?;
             defaults.push(ParameterDefault {
-                line,
+                place: self.span_from(start),
                 parameter,
                 value,
             });
@@ -908,93 +1137,124 @@ impl Parser {
                 break;
             }
         }
-        self.expect(&TokenKind::CloseBracket, "`]` closing the defaults")?;
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the defaults",
+            "the defaults go in `[ ]` (D54)",
+        )?;
         self.expect_semicolon()?;
         Ok(defaults)
     }
 
     fn type_spec(&mut self) -> Result<TypeSpec, Problem> {
-        let line = self.line();
-        let name = self.take_word("a type")?;
+        let start = self.place();
+        let name = self.take_word("a type", "a type follows `:` (D30)")?;
         match name.as_str() {
             "bool" => Ok(TypeSpec::Bool),
-            "int" => self.integer_type(line),
+            "int" => self.integer_type(start),
             "infer" => Err(Problem::refused(
-                line,
+                start,
+                "`infer` on a parameter or result",
                 "`infer` is for local values only; parameters and results write their types (D14, D108)",
             )),
             "string" => {
-                if self.eat(&TokenKind::Dot) && self.at_word("utf8") {
+                if self.eat(&TokenKind::Dot) && self.eat_word("utf8") {
                     return Err(Problem::refused(
-                        line,
-                        "a bare `string` is UTF-8 already; write `string` (D39, D120)",
-                    ));
+                        self.span_from(start),
+                        "`string.utf8` spells out the default",
+                        "a bare `string` is UTF-8, and a default is never spelled out (D39, D120)",
+                    )
+                    .fix("`string`"));
                 }
                 Err(Problem::not_decided(
-                    line,
-                    "text types beyond \"a bare `string` is UTF-8\" aren't designed yet (D120)",
+                    start,
+                    "text types, beyond \"a bare `string` is UTF-8\" (D120)",
                 ))
             }
             "void" => Err(Problem::refused(
-                line,
-                "`void` is only a function's result (`-> void`, D99), not a type for a value",
+                start,
+                "`void` as a value's type",
+                "`void` is only a function's result, `-> void` (D99)",
             )),
             "str" => Err(Problem::refused(
-                line,
-                "`str` is written in full: `string` (D94)",
-            )),
+                start,
+                "`str` is a short form",
+                "short forms are written in full unless they save 4 or more letters (D94)",
+            )
+            .fix("`string`")),
             other => Err(Problem::not_built(
-                line,
-                format!("`{other}`: the oracle's first slice has only `int[…]` and `bool`"),
+                start,
+                format!("the type `{other}` (the first slice has only `int[…]` and `bool`)"),
             )),
         }
     }
 
-    /// `int[…]`, or a narrowed `int.signed.N_bit[…]` / `int.unsigned.N_bit[…]` (D14, D26, D27, D105).
-    fn integer_type(&mut self, line: usize) -> Result<TypeSpec, Problem> {
+    /// `int[…]`, `int.wide[…]`, or an exact `int.signed.N_bit[…]` / `int.unsigned.N_bit[…]` (D14, D26, D27, D105,
+    /// D107).
+    fn integer_type(&mut self, start: Place) -> Result<TypeSpec, Problem> {
         // `None` is bare `int`, `Some(None)` is `int.wide`, `Some(Some(…))` an exact width.
         let width = if !self.eat(&TokenKind::Dot) {
             None
         } else if self.eat_word("wide") {
             Some(None)
         } else {
-            Some(Some(self.integer_width(line)?))
+            Some(Some(self.integer_width(start)?))
         };
         if !self.eat(&TokenKind::OpenBracket) {
             return Err(Problem::not_decided(
-                line,
-                "an integer type without bounds is open (D26); give its bounds: `int[min: …, max: …]`",
+                self.span_from(start),
+                "an integer type without bounds (D26)",
             ));
         }
         if self.at_word("max") {
             return Err(Problem::not_decided(
-                line,
-                "whether `max:` may come before `min:` isn't decided",
+                self.place(),
+                "whether `max:` may come before `min:`",
             ));
         }
-        self.expect_word("min")?;
-        self.expect(&TokenKind::Colon, "`:` after `min` (D54)")?;
+        self.expect_word("min", "an integer's bounds are `min:` then `max:` (D14)")?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after `min`",
+            "a label is a word and `:` (D54)",
+        )?;
         let min = self.bound()?;
-        self.expect(&TokenKind::Comma, "`,` and then `max:`")?;
-        self.expect_word("max")?;
-        self.expect(&TokenKind::Colon, "`:` after `max` (D54)")?;
+        self.expect(
+            &TokenKind::Comma,
+            "`,` and then `max:`",
+            "an integer's bounds are `min:` then `max:` (D14)",
+        )?;
+        self.expect_word("max", "an integer's bounds are `min:` then `max:` (D14)")?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after `max`",
+            "a label is a word and `:` (D54)",
+        )?;
         let max = self.bound()?;
-        self.expect(&TokenKind::CloseBracket, "`]` closing the bounds")?;
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the bounds",
+            "an integer's bounds go in `[ ]` (D14, D50)",
+        )?;
+        let place = self.span_from(start);
         let bounds = Bounds { min, max };
         match width {
-            Some(Some((signed, bits))) => check_width(line, &bounds, signed, bits)?,
+            Some(Some((signed, bits))) => check_width(place, &bounds, signed, bits)?,
             // trace D107: `int.wide` is only for bounds that need more than 64 bits.
             Some(None) if fits_64_bits(&bounds) => {
                 return Err(Problem::refused(
-                    line,
-                    "these bounds fit in 64 bits, so `int.wide` isn't needed; write `int[…]` (D107)",
-                ));
+                    place,
+                    "these bounds fit in 64 bits, so `int.wide` isn't needed",
+                    "`int.wide` is only for bounds that need more than 64 bits (D107)",
+                )
+                .fix("`int[…]`"));
             }
             // trace D105: a bare `int` holds at most 64 bits; wider ones say so.
             None if !fits_64_bits(&bounds) => {
                 return Err(Problem::refused(
-                    line,
-                    "these bounds need more than 64 bits; write `int.wide[…]` or an exact width such as `int.unsigned.128_bit[…]` (D105, D107)",
+                    place,
+                    "these bounds need more than 64 bits",
+                    "a bare `int` holds up to 64 bits; wider integers are `int.wide[…]` or an exact width (D105, D107)",
                 ));
             }
             Some(None) | None => {}
@@ -1003,37 +1263,44 @@ impl Parser {
     }
 
     /// Reads `signed.N_bit` or `unsigned.N_bit` after `int.`.
-    fn integer_width(&mut self, line: usize) -> Result<(bool, u32), Problem> {
+    fn integer_width(&mut self, start: Place) -> Result<(bool, u32), Problem> {
         let signed = match self
-            .take_word("`signed` or `unsigned` after `int.`")?
+            .take_word(
+                "`wide`, `signed` or `unsigned` after `int.`",
+                "`int` narrows to `int.wide`, `int.signed` or `int.unsigned` (D26, D107)",
+            )?
             .as_str()
         {
             "signed" => true,
             "unsigned" => false,
             other => {
                 return Err(Problem::refused(
-                    line,
-                    format!(
-                        "`int.{other}` isn't a narrowing of `int`: there are `int.wide`, `int.signed` and `int.unsigned` (D26, D107)"
-                    ),
+                    self.span_from(start),
+                    format!("`int.{other}` isn't a narrowing of `int`"),
+                    "`int` narrows to `int.wide`, `int.signed` or `int.unsigned` (D26, D107)",
                 ));
             }
         };
         if !self.eat(&TokenKind::Dot) {
             return Err(Problem::not_decided(
-                line,
-                "a signedness without a width (`int.signed[…]`) isn't decided; write e.g. `int.signed.32_bit[…]`",
+                self.span_from(start),
+                "a signedness without a width, such as `int.signed[…]`",
             ));
         }
-        let width = self.take_word("a width such as `32_bit`")?;
+        let width_place = self.place();
+        let width = self.take_word(
+            "a width such as `32_bit`",
+            "a width is written like `32_bit` (D26)",
+        )?;
         let bits = width
             .strip_suffix("_bit")
             .and_then(|digits| digits.parse::<u32>().ok())
             .filter(|bits| *bits > 0)
             .ok_or_else(|| {
                 Problem::refused(
-                    line,
-                    format!("`{width}` isn't a width; widths are written like `32_bit` (D26)"),
+                    width_place,
+                    format!("`{width}` isn't a width"),
+                    "a width is written like `32_bit` (D26)",
                 )
             })?;
         Ok((signed, bits))
@@ -1043,8 +1310,8 @@ impl Parser {
         let negative = self.eat(&TokenKind::Minus);
         let Some(TokenKind::Integer(number)) = self.kind() else {
             return Err(Problem::not_built(
-                self.line(),
-                "bounds written with named constants are in a later slice",
+                self.place(),
+                "bounds written with named constants",
             ));
         };
         let number = number.clone();
@@ -1061,23 +1328,22 @@ impl Parser {
     }
 
     fn or_expression(&mut self) -> Result<Expression, Problem> {
-        let start = self.line();
         let (mut left, mut has_and) = self.and_chain()?;
         let mut has_or = false;
         while self.at_word("or") {
-            let line = self.line();
             self.advance();
             self.refuse_logic_narrowing()?;
             let (right, right_has_and) = self.and_chain()?;
             has_and |= right_has_and;
             has_or = true;
-            left = binary(line, Operator::Or, left, right);
+            left = binary(Operator::Or, left, right);
         }
         // trace D111: `and` and `or` don't mix without brackets.
         if has_and && has_or {
             return Err(Problem::refused(
-                start,
-                "`and` and `or` don't mix without brackets: write `$a or ($b and $c)` (D111)",
+                left.place,
+                "`and` and `or` mixed without brackets",
+                "`and` and `or` don't mix without brackets, so their grouping is always written (D111)",
             ));
         }
         Ok(left)
@@ -1088,12 +1354,11 @@ impl Parser {
         let mut left = self.not_expression()?;
         let mut has_and = false;
         while self.at_word("and") {
-            let line = self.line();
             self.advance();
             self.refuse_logic_narrowing()?;
             let right = self.not_expression()?;
             has_and = true;
-            left = binary(line, Operator::And, left, right);
+            left = binary(Operator::And, left, right);
         }
         Ok((left, has_and))
     }
@@ -1101,8 +1366,8 @@ impl Parser {
     fn refuse_logic_narrowing(&self) -> Result<(), Problem> {
         if self.at(&TokenKind::Dot) {
             Err(Problem::not_decided(
-                self.line(),
-                "the narrowing of `and`/`or` that evaluates both sides isn't spelled yet (D40)",
+                self.place(),
+                "the spelling of the `and`/`or` that evaluates both sides (D40)",
             ))
         } else {
             Ok(())
@@ -1111,11 +1376,11 @@ impl Parser {
 
     fn not_expression(&mut self) -> Result<Expression, Problem> {
         if self.at_word("not") {
-            let line = self.line();
+            let start = self.place();
             self.advance();
             let operand = self.not_expression()?;
             return Ok(Expression {
-                line,
+                place: start.to(operand.place),
                 kind: ExpressionKind::Not(Box::new(operand)),
             });
         }
@@ -1127,16 +1392,15 @@ impl Parser {
         let Some(operator) = self.comparison_operator() else {
             return Ok(left);
         };
-        let line = self.line();
         self.advance();
         let right = self.additive()?;
         if self.comparison_operator().is_some() {
             return Err(Problem::not_decided(
-                self.line(),
-                "chained comparisons such as `1 < $x < 5` aren't decided",
+                self.place(),
+                "chained comparisons such as `1 < $x < 5`",
             ));
         }
-        Ok(binary(line, operator, left, right))
+        Ok(binary(operator, left, right))
     }
 
     fn comparison_operator(&self) -> Option<Operator> {
@@ -1162,17 +1426,15 @@ impl Parser {
                 Some(TokenKind::Minus) => Operator::Subtract,
                 _ => return Ok(left),
             };
-            let line = self.line();
             self.advance();
             let right = self.multiplicative()?;
-            left = binary(line, operator, left, right);
+            left = binary(operator, left, right);
         }
     }
 
     fn multiplicative(&mut self) -> Result<Expression, Problem> {
         let mut left = self.unary()?;
         loop {
-            let line = self.line();
             let operator = if self.eat_word("x") {
                 Operator::Multiply
             } else if self.eat_word("div") {
@@ -1183,63 +1445,67 @@ impl Parser {
                 return Ok(left);
             };
             let right = self.unary()?;
-            left = binary(line, operator, left, right);
+            left = binary(operator, left, right);
         }
     }
 
     fn rounding(&mut self) -> Result<Rounding, Problem> {
+        let start = self.previous();
         if !self.eat(&TokenKind::Dot) {
             return Ok(Rounding::Exact);
         }
-        let line = self.line();
-        match self
-            .take_word("`floor`, `trunc` or `ceil` after `div.`")?
-            .as_str()
-        {
+        let word = self.take_word(
+            "`floor`, `trunc` or `ceil` after `div.`",
+            "`div` narrows to `div.floor`, `div.trunc` or `div.ceil` (D37)",
+        )?;
+        let place = self.span_from(start);
+        match word.as_str() {
             "floor" => Ok(Rounding::Floor),
             "trunc" => Ok(Rounding::Trunc),
             "ceil" => Ok(Rounding::Ceil),
             "exact" => Err(Problem::refused(
-                line,
-                "`div.exact` spells out the default; write `div` (D37, D39)",
-            )),
+                place,
+                "`div.exact` spells out the default",
+                "bare `div` is exact, and a default the language fixes is never spelled out (D37, D39)",
+            )
+            .fix("`div`")),
             other => Err(Problem::refused(
-                line,
-                format!(
-                    "`div.{other}` isn't a division: there are `div`, `div.floor`, `div.trunc`, `div.ceil` (D37)"
-                ),
+                place,
+                format!("`div.{other}` isn't a division"),
+                "division is `div`, `div.floor`, `div.trunc` or `div.ceil` (D37)",
             )),
         }
     }
 
     fn remainder_rule(&mut self) -> Result<RemainderRule, Problem> {
+        let start = self.previous();
         if !self.eat(&TokenKind::Dot) {
             return Ok(RemainderRule::NonNegative);
         }
-        let line = self.line();
-        match self
-            .take_word("`floor`, `trunc` or `euclid` after `mod.`")?
-            .as_str()
-        {
+        let word = self.take_word(
+            "`floor`, `trunc` or `euclid` after `mod.`",
+            "`mod` narrows to `mod.floor`, `mod.trunc` or `mod.euclid` (D38)",
+        )?;
+        let place = self.span_from(start);
+        match word.as_str() {
             "floor" => Ok(RemainderRule::Floor),
             "trunc" => Ok(RemainderRule::Trunc),
             "euclid" => Ok(RemainderRule::Euclid),
             other => Err(Problem::refused(
-                line,
-                format!(
-                    "`mod.{other}` isn't a remainder: there are `mod`, `mod.floor`, `mod.trunc`, `mod.euclid` (D38)"
-                ),
+                place,
+                format!("`mod.{other}` isn't a remainder"),
+                "the remainder is `mod`, `mod.floor`, `mod.trunc` or `mod.euclid` (D38)",
             )),
         }
     }
 
     fn unary(&mut self) -> Result<Expression, Problem> {
         if self.at(&TokenKind::Minus) {
-            let line = self.line();
+            let start = self.place();
             self.advance();
             let operand = self.unary()?;
             return Ok(Expression {
-                line,
+                place: start.to(operand.place),
                 kind: ExpressionKind::Negate(Box::new(operand)),
             });
         }
@@ -1247,9 +1513,13 @@ impl Parser {
     }
 
     fn primary(&mut self) -> Result<Expression, Problem> {
-        let line = self.line();
+        let start = self.place();
         let Some(kind) = self.kind().cloned() else {
-            return Err(self.refuse("the program ends in the middle of a value"));
+            return Err(Problem::refused(
+                start,
+                "the program ends in the middle of a value",
+                "a value is complete before its statement ends (D29)",
+            ));
         };
         let expression_kind = match kind {
             TokenKind::Integer(number) => ExpressionKind::Integer(number),
@@ -1259,70 +1529,91 @@ impl Parser {
                 // trace D50: maths grouping is the one place `( )` runs nothing.
                 self.advance();
                 let inner = self.expression()?;
-                self.expect(&TokenKind::CloseParen, "`)` closing the group")?;
-                return Ok(inner);
+                self.expect(
+                    &TokenKind::CloseParen,
+                    "`)` closing the group",
+                    "a group opened with `(` closes with `)` (D50)",
+                )?;
+                return Ok(Expression {
+                    place: self.span_from(start),
+                    kind: inner.kind,
+                });
             }
-            TokenKind::Word(word) => return self.word_value(line, &word),
+            TokenKind::Word(word) => return self.word_value(start, &word),
             other => {
-                return Err(self.refuse(format!("{} can't start a value here", describe(&other))));
+                return Err(Problem::refused(
+                    start,
+                    format!("{} can't start a value here", describe(&other)),
+                    "a value starts with a number, text, a `$name`, a word such as `true`, a call, `-`, `not` or `(` (SSS: Radium 4)",
+                ));
             }
         };
         self.advance();
         Ok(Expression {
-            line,
+            place: start,
             kind: expression_kind,
         })
     }
 
-    fn word_value(&mut self, line: usize, word: &str) -> Result<Expression, Problem> {
+    fn word_value(&mut self, start: Place, word: &str) -> Result<Expression, Problem> {
         let kind = match word {
             "true" => ExpressionKind::Bool(true),
             "false" => ExpressionKind::Bool(false),
             "newline" => ExpressionKind::Newline,
             "newln" => {
                 return Err(Problem::refused(
-                    line,
-                    "`newln` is written in full: `newline` (D94)",
-                ));
+                    start,
+                    "`newln` is a short form",
+                    "short forms are written in full unless they save 4 or more letters (D94)",
+                )
+                .fix("`newline`"));
             }
             "old" => {
                 self.advance();
-                self.expect(&TokenKind::OpenBracket, "`[` after `old` (D53)")?;
+                self.expect(
+                    &TokenKind::OpenBracket,
+                    "`[` after `old`",
+                    "`old[$parameter]` describes a starting value, so it uses `[ ]` (D50, D53)",
+                )?;
                 let name = self.take_value_name("a parameter's `$name`")?;
-                self.expect(&TokenKind::CloseBracket, "`]` closing `old[…]`")?;
+                self.expect(
+                    &TokenKind::CloseBracket,
+                    "`]` closing `old[…]`",
+                    "`old[$parameter]` (D53)",
+                )?;
                 return Ok(Expression {
-                    line,
+                    place: self.span_from(start),
                     kind: ExpressionKind::Old(name),
                 });
             }
             "result" => ExpressionKind::Result,
             "std" => {
-                return Err(Problem::not_built(
-                    line,
-                    "`std` inside a value is in a later slice",
-                ));
+                return Err(Problem::not_built(start, "`std` inside a value"));
             }
             "my" if self.kind_after(1) == Some(&TokenKind::Dot) => {
+                let call = self.call()?;
                 return Ok(Expression {
-                    line,
-                    kind: ExpressionKind::Call(self.call()?),
+                    place: call.place,
+                    kind: ExpressionKind::Call(call),
                 });
             }
             _ if self.kind_after(1) == Some(&TokenKind::OpenParen) => {
+                let call = self.call()?;
                 return Ok(Expression {
-                    line,
-                    kind: ExpressionKind::Call(self.call()?),
+                    place: call.place,
+                    kind: ExpressionKind::Call(call),
                 });
             }
             _ => {
                 return Err(Problem::refused(
-                    line,
+                    start,
                     format!("`{word}` can't start a value here"),
+                    "a value starts with a number, text, a `$name`, a word such as `true`, a call, `-`, `not` or `(` (SSS: Radium 4)",
                 ));
             }
         };
         self.advance();
-        Ok(Expression { line, kind })
+        Ok(Expression { place: start, kind })
     }
 }
 
@@ -1336,7 +1627,7 @@ fn fits_64_bits(bounds: &Bounds) -> bool {
 }
 
 /// Refuses bounds that a narrowed width can't hold (D27).
-fn check_width(line: usize, bounds: &Bounds, signed: bool, bits: u32) -> Result<(), Problem> {
+fn check_width(place: Place, bounds: &Bounds, signed: bool, bits: u32) -> Result<(), Problem> {
     let (lowest, highest) = if signed {
         let half = BigInt::from(1) << bits.saturating_sub(1);
         (-half.clone(), half - 1)
@@ -1346,18 +1637,19 @@ fn check_width(line: usize, bounds: &Bounds, signed: bool, bits: u32) -> Result<
     if bounds.min < lowest || bounds.max > highest {
         let kind = if signed { "signed" } else { "unsigned" };
         return Err(Problem::refused(
-            line,
+            place,
             format!(
-                "`int.{kind}.{bits}_bit` holds {lowest} to {highest}, which these bounds don't fit in (D27)"
+                "`int.{kind}.{bits}_bit` holds {lowest} to {highest}, and these bounds don't fit"
             ),
+            "an exact width must hold its bounds (D14, D27)",
         ));
     }
     Ok(())
 }
 
-fn binary(line: usize, operator: Operator, left: Expression, right: Expression) -> Expression {
+fn binary(operator: Operator, left: Expression, right: Expression) -> Expression {
     Expression {
-        line,
+        place: left.place.to(right.place),
         kind: ExpressionKind::Binary {
             operator,
             left: Box::new(left),
