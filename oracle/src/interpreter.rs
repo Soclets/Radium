@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use crate::ast::{
     Bounds, Call, CallTarget, Expression, ExpressionKind, Field, FieldValue, Function, Handoff,
-    LoopRange, MatchCase, Operator, Program, RangeEnd, RemainderRule, Rounding, Statement,
-    StatementKind, Target, TypeSpec,
+    Index, LoopRange, LoopSource, MatchCase, Operator, Program, RangeEnd, RemainderRule, Rounding,
+    Statement, StatementKind, Step, Target, TypeSpec,
 };
 use crate::types::Types;
 use num_bigint::{BigInt, Sign};
@@ -81,12 +81,16 @@ enum Value {
         case: String,
         fields: Vec<(String, Value)>,
     },
+    /// An array's items, front to back (D70).
+    Array(Vec<Value>),
 }
 
 #[derive(Debug, Clone)]
 struct Slot {
     value: Value,
     bounds: Option<Bounds>,
+    /// The type written for it, when one is, so the items of an array can be checked (D70).
+    type_spec: Option<TypeSpec>,
     /// Where the value's bounds are written, for `because:` links (D122).
     declared: Place,
 }
@@ -193,9 +197,17 @@ impl<'program> Machine<'program> {
                 let slot = Slot {
                     value,
                     bounds,
+                    type_spec: type_spec.clone(),
                     declared: place,
                 };
                 check_bounds(expression.place, name, &slot.value, &slot)?;
+                check_items(
+                    expression.place,
+                    &format!("${name}"),
+                    &slot.value,
+                    slot.type_spec.as_ref(),
+                    slot.declared,
+                )?;
                 frame.declare(name, slot);
                 Ok(Flow::Normal)
             }
@@ -229,9 +241,16 @@ impl<'program> Machine<'program> {
             StatementKind::For {
                 loop_name,
                 variable,
-                range,
+                source,
                 body,
-            } => self.for_loop(place, loop_name.as_ref(), variable, range, body, frame),
+            } => match source {
+                LoopSource::Range(range) => {
+                    self.for_loop(place, loop_name.as_ref(), variable, range, body, frame)
+                }
+                LoopSource::Each(collection) => {
+                    self.for_each(place, loop_name.as_ref(), variable, collection, body, frame)
+                }
+            },
             StatementKind::While {
                 condition,
                 decreases,
@@ -299,6 +318,7 @@ impl<'program> Machine<'program> {
                 Slot {
                     value: Value::Integer(current.clone()),
                     bounds: None,
+                    type_spec: None,
                     declared: place,
                 },
             )]));
@@ -395,6 +415,7 @@ impl<'program> Machine<'program> {
             let slot = Slot {
                 value,
                 bounds: parameter.type_spec.bounds().cloned(),
+                type_spec: Some(parameter.type_spec.clone()),
                 declared: parameter.place,
             };
             let argument_place = match binding {
@@ -405,6 +426,13 @@ impl<'program> Machine<'program> {
                 Binding::Default(_) => call.place,
             };
             check_bounds(argument_place, &parameter.name, &slot.value, &slot)?;
+            check_items(
+                argument_place,
+                &format!("${}", parameter.name),
+                &slot.value,
+                slot.type_spec.as_ref(),
+                slot.declared,
+            )?;
             callee
                 .old
                 .insert(parameter.name.clone(), slot.value.clone());
@@ -491,6 +519,7 @@ impl<'program> Machine<'program> {
                     )
                     .into());
                 }
+                check_items(place, "the result", &value, Some(result), function.place)?;
                 callee.result = Some(value);
             }
             (Flow::Return(None, _), None) => {}
@@ -552,6 +581,13 @@ impl<'program> Machine<'program> {
                 .find(|(value, _)| value.name == field.name)
                 .ok_or_else(|| fault(format!("field `{}` wasn't set", field.name)))?;
             check_field_bounds(value.value.place, field, found)?;
+            check_items(
+                value.value.place,
+                &field.name,
+                found,
+                Some(&field.type_spec),
+                field.place,
+            )?;
             fields.push((field.name.clone(), found.clone()));
         }
         Ok(match case {
@@ -567,50 +603,135 @@ impl<'program> Machine<'program> {
         })
     }
 
-    /// Sets a value, or a field inside it, checking bounds on the way (D14, D41, D58).
+    /// Sets a value, or a field or item inside it, checking indexes and bounds on the way (D14, D41, D58, D64).
     fn assign(
         &mut self,
-        target: &Target,
+        target: &'program Target,
         place: Place,
         value: Value,
         frame: &mut Frame,
     ) -> Result<(), Stop> {
         let name = &target.name;
+        // trace D55: the indexes are worked out first, left to right, before anything changes.
+        let mut indexes = Vec::new();
+        for step in &target.steps {
+            if let Step::Item(index) = step {
+                indexes.push(self.integer(&index.value, frame)?);
+            }
+        }
         let slot = frame
             .lookup_mut(name)
             .ok_or_else(|| fault(format!("`${name}` has no slot")))?;
-        if target.fields.is_empty() {
+        if target.steps.is_empty() {
             check_bounds(place, name, &value, slot)?;
+            check_items(
+                place,
+                &format!("${name}"),
+                &value,
+                slot.type_spec.as_ref(),
+                slot.declared,
+            )?;
             slot.value = value;
             return Ok(());
         }
+        let mut spec = slot.type_spec.clone();
+        let mut declared = slot.declared;
         let mut current = &mut slot.value;
-        for field_name in &target.fields {
-            let Value::Struct { type_name, fields } = current else {
-                return Err(fault("a field set on something that isn't a struct"));
+        let mut indexes = indexes.into_iter();
+        for step in &target.steps {
+            current = match step {
+                Step::Field(field_name) => {
+                    let Value::Struct { type_name, fields } = current else {
+                        return Err(fault("a field set on something that isn't a struct"));
+                    };
+                    let field = self
+                        .types
+                        .structure(type_name)
+                        .and_then(|definition| {
+                            definition
+                                .fields
+                                .iter()
+                                .find(|field| &field.name == field_name)
+                        })
+                        .ok_or_else(|| fault(format!("no field `{field_name}`")))?;
+                    spec = Some(field.type_spec.clone());
+                    declared = field.place;
+                    &mut fields
+                        .iter_mut()
+                        .find(|(field, _)| field == field_name)
+                        .ok_or_else(|| fault(format!("no field `{field_name}`")))?
+                        .1
+                }
+                Step::Item(index) => {
+                    let Value::Array(items) = current else {
+                        return Err(fault("an item set on something that isn't an array"));
+                    };
+                    let number = indexes
+                        .next()
+                        .ok_or_else(|| fault("an index went missing"))?;
+                    let offset = item_offset(index, &number, items.len(), Some(declared))?;
+                    spec = match spec {
+                        Some(TypeSpec::Array { element, .. }) => Some(*element),
+                        _ => None,
+                    };
+                    items
+                        .get_mut(offset)
+                        .ok_or_else(|| fault("an item went missing"))?
+                }
             };
-            let declared = self
-                .types
-                .structure(type_name)
-                .and_then(|definition| {
-                    definition
-                        .fields
-                        .iter()
-                        .find(|field| &field.name == field_name)
-                })
-                .ok_or_else(|| fault(format!("no field `{field_name}`")))?;
-            let (_, inner) = fields
-                .iter_mut()
-                .find(|(field, _)| field == field_name)
-                .ok_or_else(|| fault(format!("no field `{field_name}`")))?;
-            if Some(field_name) == target.fields.last() {
-                check_field_bounds(place, declared, &value)?;
-                *inner = value;
-                return Ok(());
-            }
-            current = inner;
         }
-        Err(fault("an assignment went nowhere"))
+        if let (Value::Integer(number), Some(bounds)) =
+            (&value, spec.as_ref().and_then(TypeSpec::bounds))
+            && (*number < bounds.min || *number > bounds.max)
+        {
+            return Err(Problem::check_failed(
+                place,
+                format!(
+                    "this goes into int[min: {}, max: {}], and the value doesn't fit",
+                    bounds.min, bounds.max
+                ),
+                "every value stays within its bounds, inside structs and arrays too (D14, D58, D70)",
+            )
+            .when(format!("it would be {number}"))
+            .because(declared, "the bounds are set here")
+            .into());
+        }
+        check_items(place, &format!("${name}"), &value, spec.as_ref(), declared)?;
+        *current = value;
+        Ok(())
+    }
+
+    /// Goes through an array's items, front to back (D74).
+    fn for_each(
+        &mut self,
+        place: Place,
+        loop_name: Option<&String>,
+        variable: &str,
+        collection: &'program Expression,
+        body: &'program [Statement],
+        frame: &mut Frame,
+    ) -> Result<Flow, Stop> {
+        let Value::Array(items) = self.evaluate(collection, frame)? else {
+            return Err(fault("a loop went through something that isn't an array"));
+        };
+        for item in items {
+            self.tick(place)?;
+            frame.scopes.push(HashMap::from([(
+                variable.to_owned(),
+                Slot {
+                    value: item,
+                    bounds: None,
+                    type_spec: None,
+                    declared: place,
+                },
+            )]));
+            let flow = self.block(body, frame);
+            frame.scopes.pop();
+            if let Some(flow) = after_trip(flow?, loop_name) {
+                return Ok(flow);
+            }
+        }
+        Ok(Flow::Normal)
     }
 
     /// Runs the one `case` that matches (D72).
@@ -639,6 +760,7 @@ impl<'program> Machine<'program> {
                 Slot {
                     value,
                     bounds: None,
+                    type_spec: None,
                     declared: binding.place,
                 },
             );
@@ -658,7 +780,7 @@ impl<'program> Machine<'program> {
                     value @ (Value::Integer(_) | Value::Bool(_)) => {
                         self.output.push_str(&show(&value));
                     }
-                    Value::Struct { .. } | Value::Union { .. } => {
+                    Value::Struct { .. } | Value::Union { .. } | Value::Array(_) => {
                         return Err(fault("a struct or union reached `std::print`"));
                     }
                 },
@@ -670,9 +792,11 @@ impl<'program> Machine<'program> {
     fn truth(&mut self, expression: &'program Expression, frame: &mut Frame) -> Result<bool, Stop> {
         match self.evaluate(expression, frame)? {
             Value::Bool(truth) => Ok(truth),
-            Value::Integer(_) | Value::Struct { .. } | Value::Union { .. } => Err(fault(
-                "something other than a `bool` where the checker promised one",
-            )),
+            Value::Integer(_) | Value::Struct { .. } | Value::Union { .. } | Value::Array(_) => {
+                Err(fault(
+                    "something other than a `bool` where the checker promised one",
+                ))
+            }
         }
     }
 
@@ -683,9 +807,9 @@ impl<'program> Machine<'program> {
     ) -> Result<BigInt, Stop> {
         match self.evaluate(expression, frame)? {
             Value::Integer(number) => Ok(number),
-            Value::Bool(_) | Value::Struct { .. } | Value::Union { .. } => Err(fault(
-                "something other than an integer where the checker promised one",
-            )),
+            Value::Bool(_) | Value::Struct { .. } | Value::Union { .. } | Value::Array(_) => Err(
+                fault("something other than an integer where the checker promised one"),
+            ),
         }
     }
 
@@ -724,6 +848,28 @@ impl<'program> Machine<'program> {
                 case,
                 fields,
             } => self.build(type_name, case.as_deref(), fields, frame),
+            ExpressionKind::Array { items, .. } => {
+                let mut values = Vec::with_capacity(items.len());
+                for item in items {
+                    values.push(self.evaluate(item, frame)?);
+                }
+                Ok(Value::Array(values))
+            }
+            ExpressionKind::Item { base, index } => {
+                let Value::Array(items) = self.evaluate(base, frame)? else {
+                    return Err(fault("an item read from something that isn't an array"));
+                };
+                let number = self.integer(&index.value, frame)?;
+                let declared = match &base.kind {
+                    ExpressionKind::Value(name) => frame.lookup(name).map(|slot| slot.declared),
+                    _ => None,
+                };
+                let offset = item_offset(index, &number, items.len(), declared)?;
+                items
+                    .into_iter()
+                    .nth(offset)
+                    .ok_or_else(|| fault("an item went missing"))
+            }
             ExpressionKind::Field { base, name } => match self.evaluate(base, frame)? {
                 Value::Struct { fields, .. } => fields
                     .into_iter()
@@ -806,12 +952,83 @@ fn show(value: &Value) -> String {
         Value::Union {
             type_name, case, ..
         } => format!("`{type_name}.{case}`"),
+        Value::Array(items) => format!("an array of {} items", items.len()),
     }
 }
 
 /// Matches a call's arguments again, after the call, to find what was lent to change.
 fn bindings_again(function: &Function, call: &Call) -> Result<Vec<Binding>, Stop> {
     bind_arguments(function, call).map_err(|problem| fault(problem.what()))
+}
+
+/// Turns `pos: n` or `offset: n` into an offset from the start, checking it lands inside the array (D64).
+fn item_offset(
+    index: &Index,
+    number: &BigInt,
+    length: usize,
+    declared: Option<Place>,
+) -> Result<usize, Stop> {
+    let offset = if index.from_zero {
+        number.clone()
+    } else {
+        number - 1
+    };
+    let fits = offset.sign() != Sign::Minus && offset < BigInt::from(length);
+    let label = if index.from_zero { "offset" } else { "pos" };
+    if !fits {
+        let range = if index.from_zero {
+            format!("offset: 0 to {}", length.saturating_sub(1))
+        } else {
+            format!("pos: 1 to {length}")
+        };
+        let problem = Problem::check_failed(
+            index.place,
+            "this index is outside the array",
+            "an index lands on an item: `pos:` from 1, `offset:` from 0, up to the array's length (D64, D70)",
+        )
+        .when(format!("{label}: {number}, but the array holds {range}"));
+        return Err(match declared {
+            Some(place) => problem.because(place, "the array is declared here"),
+            None => problem,
+        }
+        .into());
+    }
+    usize::try_from(offset).map_err(|_| fault("an offset too large for the oracle"))
+}
+
+/// Checks each item of an array against its element type's bounds, as deep as arrays go (D14, D70).
+fn check_items(
+    place: Place,
+    name: &str,
+    value: &Value,
+    type_spec: Option<&TypeSpec>,
+    declared: Place,
+) -> Result<(), Stop> {
+    let (Value::Array(items), Some(TypeSpec::Array { element, .. })) = (value, type_spec) else {
+        return Ok(());
+    };
+    for (offset, item) in items.iter().enumerate() {
+        if let (Value::Integer(number), Some(bounds)) = (item, element.bounds())
+            && (*number < bounds.min || *number > bounds.max)
+        {
+            return Err(Problem::check_failed(
+                place,
+                format!(
+                    "an item of `{name}` doesn't fit its type, int[min: {}, max: {}]",
+                    bounds.min, bounds.max
+                ),
+                "every item stays within its array's bounds (D14, D70)",
+            )
+            .when(format!(
+                "pos: {} would be {number}",
+                offset.saturating_add(1)
+            ))
+            .because(declared, format!("`{name}`'s type is set here"))
+            .into());
+        }
+        check_items(place, name, item, Some(element), declared)?;
+    }
+    Ok(())
 }
 
 /// Checks a value against a field's bounds (D14, D58).

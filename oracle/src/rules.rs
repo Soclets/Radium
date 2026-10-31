@@ -6,6 +6,7 @@ use num_bigint::{BigInt, Sign};
 /// Words Radium itself uses. A writer's function with one of these names is called `my.name` (D43).
 pub(crate) const RADIUM_WORDS: &[&str] = &[
     "and",
+    "array",
     "at_least",
     "at_most",
     "bool",

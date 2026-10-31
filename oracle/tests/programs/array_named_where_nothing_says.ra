@@ -1,0 +1,13 @@
+// trace D124
+// trace D108
+// expect: runs
+// output: 60
+fn.main [] -> void:
+    var $xs: infer = array[10, 20, 30];
+    var $total: infer = 0;
+    for $x in $xs:
+        $total = $total + $x;
+    end for
+    std::print($total, newline);
+    return void;
+end fn.main

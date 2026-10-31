@@ -1,0 +1,18 @@
+// trace D70
+// trace D80
+// trace D74
+// expect: runs
+// output: 6
+fn total [$xs: array[int[min: 0, max: 9], length: 3]] -> int[min: 0, max: 27]:
+    var $sum: int[min: 0, max: 27] = 0;
+    for $x in $xs:
+        $sum = $sum + $x;
+    end for
+    return $sum;
+end fn total
+
+fn.main [] -> void:
+    var $xs: array[int[min: 0, max: 9], length: 3] = [1, 2, 3];
+    std::print(total(Lend $xs), newline);
+    return void;
+end fn.main

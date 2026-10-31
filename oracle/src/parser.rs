@@ -6,9 +6,10 @@ use num_bigint::{BigInt, Sign};
 
 use crate::ast::{
     Argument, Bounds, Branch, Call, CallTarget, Case, CaseBinding, Changeability, Expression,
-    ExpressionKind, Field, FieldValue, Function, Handoff, Holder, Holding, LabelEntry, Labels,
-    LoopRange, MatchCase, Operator, Parameter, ParameterDefault, Program, RangeEnd, RemainderRule,
-    Rounding, Statement, StatementKind, StructDefinition, Target, TypeSpec, UnionDefinition,
+    ExpressionKind, Field, FieldValue, Function, Handoff, Holder, Holding, Index, LabelEntry,
+    Labels, LoopRange, LoopSource, MatchCase, Operator, Parameter, ParameterDefault, Program,
+    RangeEnd, RemainderRule, Rounding, Statement, StatementKind, Step, StructDefinition, Target,
+    TypeSpec, UnionDefinition,
 };
 use crate::lexer::{Token, TokenKind, describe};
 use crate::outcome::{Place, Problem};
@@ -450,16 +451,17 @@ impl Parser {
 
     fn assignment(&mut self, start: Place) -> Result<Statement, Problem> {
         let name = self.take_value_name("a value's name")?;
-        let mut fields = Vec::new();
-        while self.at(&TokenKind::Dot) {
-            self.advance();
-            fields.push(self.take_word("a field's name", "`.` reads a field (D26, D58)")?);
-        }
-        if self.at(&TokenKind::OpenBracket) {
-            return Err(Problem::not_built(
-                self.place(),
-                "changing an `array` item (D64, D70)",
-            ));
+        let mut steps = Vec::new();
+        loop {
+            if self.eat(&TokenKind::Dot) {
+                steps.push(Step::Field(
+                    self.take_word("a field's name", "`.` reads a field (D26, D58)")?,
+                ));
+            } else if self.at(&TokenKind::OpenBracket) {
+                steps.push(Step::Item(self.index()?));
+            } else {
+                break;
+            }
         }
         self.expect(
             &TokenKind::Equals,
@@ -471,7 +473,7 @@ impl Parser {
         Ok(Statement {
             place: self.span_from(start),
             kind: StatementKind::Assign {
-                target: Target { name, fields },
+                target: Target { name, steps },
                 value,
             },
         })
@@ -523,16 +525,14 @@ impl Parser {
         };
         let variable = self.take_value_name("the loop's value, starting with `$`")?;
         self.expect_word("in", "every loop is `for $x in …:` (D74)")?;
-        if matches!(self.kind(), Some(TokenKind::ValueName(_))) {
-            return Err(Problem::not_built(
-                self.place(),
-                "going through a collection (D74)",
-            ));
-        }
-        let range = self.loop_range()?;
+        let source = if self.at_word("range") {
+            LoopSource::Range(Box::new(self.loop_range()?))
+        } else {
+            LoopSource::Each(self.expression()?)
+        };
         self.expect(
             &TokenKind::Colon,
-            "`:` after the range",
+            "`:` after what the loop goes through",
             "a block's opening line ends with `:` (D13)",
         )?;
         let body = self.statements(opener)?;
@@ -540,7 +540,7 @@ impl Parser {
         Ok(StatementKind::For {
             loop_name,
             variable,
-            range,
+            source,
             body,
         })
     }
@@ -1652,6 +1652,16 @@ impl Parser {
                     kind: ExpressionKind::Value(name),
                 });
             }
+            TokenKind::OpenBracket => {
+                let items = self.array_items()?;
+                return Ok(Expression {
+                    place: self.span_from(start),
+                    kind: ExpressionKind::Array {
+                        named: false,
+                        items,
+                    },
+                });
+            }
             TokenKind::OpenParen => {
                 // trace D50: maths grouping is the one place `( )` runs nothing.
                 self.advance();
@@ -1714,6 +1724,9 @@ impl Parser {
                 });
             }
             "result" => ExpressionKind::Result,
+            "array" if self.kind_after(1) == Some(&TokenKind::OpenBracket) => {
+                return self.named_array(start);
+            }
             "std" => {
                 return Err(Problem::not_built(start, "`std` inside a value"));
             }
@@ -1784,10 +1797,15 @@ impl Parser {
     fn field_reads(&mut self, mut base: Expression) -> Result<Expression, Problem> {
         loop {
             if self.at(&TokenKind::OpenBracket) {
-                return Err(Problem::not_built(
-                    self.place(),
-                    "reading an `array` item (D64, D70)",
-                ));
+                let index = self.index()?;
+                base = Expression {
+                    place: self.span_from(base.place),
+                    kind: ExpressionKind::Item {
+                        base: Box::new(base),
+                        index,
+                    },
+                };
+                continue;
             }
             if !(self.at(&TokenKind::Dot) && matches!(self.kind_after(1), Some(TokenKind::Word(_))))
             {
@@ -1803,6 +1821,92 @@ impl Parser {
                 },
             };
         }
+    }
+
+    /// Reads `[pos: …]` or `[offset: …]`; an index always says which way it counts (D64).
+    fn index(&mut self) -> Result<Index, Problem> {
+        let start = self.place();
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[`",
+            "an item is reached with `[pos: …]` or `[offset: …]` (D64)",
+        )?;
+        let labelled = self.at_any_word() && self.kind_after(1) == Some(&TokenKind::Colon);
+        if !labelled {
+            // Point at the whole `[…]` as written.
+            while !self.at(&TokenKind::CloseBracket) && self.current().is_some() {
+                self.advance();
+            }
+            self.advance();
+            return Err(Problem::refused(
+                self.span_from(start),
+                "this index doesn't say how it counts",
+                "an index always has its label: `pos:` counts from 1, `offset:` from 0 (D64)",
+            ));
+        }
+        let label_place = self.place();
+        let label = self.take_word(
+            "`pos:` or `offset:`",
+            "an index is `pos:` or `offset:` (D64)",
+        )?;
+        let from_zero = match label.as_str() {
+            "pos" => false,
+            "offset" => true,
+            other => {
+                return Err(Problem::refused(
+                    label_place,
+                    format!("`{other}:` isn't an index"),
+                    "an index is `pos:` (counting from 1) or `offset:` (counting from 0) (D64)",
+                ));
+            }
+        };
+        self.advance();
+        let value = self.expression()?;
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the index",
+            "an item is reached with `[pos: …]` or `[offset: …]` (D64)",
+        )?;
+        Ok(Index {
+            place: self.span_from(start),
+            from_zero,
+            value: Box::new(value),
+        })
+    }
+
+    /// `array[1, 2, 3]`, where nothing says the kind (D124).
+    fn named_array(&mut self, start: Place) -> Result<Expression, Problem> {
+        self.advance();
+        let items = self.array_items()?;
+        Ok(Expression {
+            place: self.span_from(start),
+            kind: ExpressionKind::Array { named: true, items },
+        })
+    }
+
+    /// Reads the items of an array value, after `[` (D124).
+    fn array_items(&mut self) -> Result<Vec<Expression>, Problem> {
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[`",
+            "an array value's items go in `[ ]` (D50, D124)",
+        )?;
+        let mut items = Vec::new();
+        if self.at(&TokenKind::CloseBracket) {
+            return Ok(items);
+        }
+        loop {
+            items.push(self.expression()?);
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the array",
+            "an array value's items go in `[ ]` (D50, D124)",
+        )?;
+        Ok(items)
     }
 
     /// Reads `[field = value, …]` when building a value (D50, D58).

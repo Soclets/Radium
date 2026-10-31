@@ -10,8 +10,8 @@ use num_bigint::BigInt;
 
 use crate::ast::{
     Argument, Call, CallTarget, Case, Changeability, Expression, ExpressionKind, FieldValue,
-    Function, Handoff, Holder, Holding, LoopRange, MatchCase, Operator, Parameter, Program,
-    RangeEnd, Statement, StatementKind, Target, TypeSpec, ValueKind,
+    Function, Handoff, Holder, Holding, Index, LoopRange, LoopSource, MatchCase, Operator,
+    Parameter, Program, RangeEnd, Statement, StatementKind, Step, Target, TypeSpec, ValueKind,
 };
 use crate::binding::{Binding, bind_arguments};
 use crate::outcome::{Place, Problem};
@@ -370,9 +370,16 @@ impl<'program> Checker<'program> {
             StatementKind::For {
                 loop_name,
                 variable,
-                range,
+                source,
                 body,
-            } => self.for_loop(place, loop_name.as_ref(), variable, range, body),
+            } => match source {
+                LoopSource::Range(range) => {
+                    self.for_loop(place, loop_name.as_ref(), variable, range, body)
+                }
+                LoopSource::Each(collection) => {
+                    self.for_each(place, loop_name.as_ref(), variable, collection, body)
+                }
+            },
             StatementKind::While {
                 condition,
                 decreases,
@@ -512,20 +519,7 @@ impl<'program> Checker<'program> {
                 .because(header.0, header.1));
             }
             (Some(result), Some(value)) => {
-                let kind = self.expression(value, Context::Plain)?;
-                if kind != result.kind() {
-                    return Err(Problem::refused(
-                        value.place,
-                        format!(
-                            "this is {}, but `{}` gives back {}",
-                            kind.describe(),
-                            function.name,
-                            result.kind().describe()
-                        ),
-                        "a `return` gives back a value of the function's result type (D52, D95)",
-                    )
-                    .because(header.0, header.1));
-                }
+                self.value_into(value, &result.kind(), Context::Plain, Some(header))?;
             }
         }
         for scope in &self.scopes {
@@ -547,21 +541,14 @@ impl<'program> Checker<'program> {
         type_spec: Option<&TypeSpec>,
         value: &Expression,
     ) -> Result<(), Problem> {
-        let value_kind = self.expression(value, Context::Plain)?;
-        if let Some(type_spec) = type_spec {
+        let value_kind = if let Some(type_spec) = type_spec {
             self.types.check_type(type_spec, place)?;
-            if type_spec.kind() != value_kind {
-                return Err(Problem::refused(
-                    value.place,
-                    format!(
-                        "this is {}, but `${name}` holds {}",
-                        value_kind.describe(),
-                        type_spec.kind().describe()
-                    ),
-                    "a value holds only values of its own type (D30)",
-                ));
-            }
-        }
+            let kind = type_spec.kind();
+            self.value_into(value, &kind, Context::Plain, None)?;
+            kind
+        } else {
+            self.expression(value, Context::Plain)?
+        };
         if holder == Holder::Const && !value_kind.is_copied() {
             return Err(Problem::not_decided(
                 place,
@@ -598,16 +585,15 @@ impl<'program> Checker<'program> {
         target: &Target,
         value: &Expression,
     ) -> Result<(), Problem> {
-        let value_kind = self.expression(value, Context::Plain)?;
         let name = &target.name;
         let Some(known) = self.lookup(name).cloned() else {
             return Err(undeclared(place, name));
         };
         refuse_given(place, name, &known)?;
-        let what = if target.fields.is_empty() {
-            format!("`${name}` can't change")
-        } else {
-            format!("`${name}`'s fields can't change")
+        let what = match target.steps.first() {
+            None => format!("`${name}` can't change"),
+            Some(Step::Field(_)) => format!("`${name}`'s fields can't change"),
+            Some(Step::Item(_)) => format!("`${name}`'s items can't change"),
         };
         let refusal = match known.role {
             Role::Const => Some((
@@ -615,7 +601,7 @@ impl<'program> Checker<'program> {
                 format!("`${name}` is declared `const` here"),
             )),
             Role::VarImmut => Some((
-                "a `var.immut` never changes after it is set, nor do its fields (D30, D58)",
+                "a `var.immut` never changes after it is set, nor does anything inside it (D30, D58)",
                 format!("`${name}` is declared `var.immut` here"),
             )),
             Role::Parameter {
@@ -638,7 +624,7 @@ impl<'program> Checker<'program> {
         if let Some((why, fact)) = refusal {
             return Err(Problem::refused(place, what, why).because(known.place, fact));
         }
-        if target.fields.is_empty() {
+        if target.steps.is_empty() {
             if matches!(
                 known.role,
                 Role::Parameter {
@@ -655,74 +641,192 @@ impl<'program> Checker<'program> {
                 return Err(Problem::not_decided(place, "replacing a `must_Give` value"));
             }
         }
-        let target_kind = self.field_path(place, &known.kind, &target.fields)?;
+        let target_kind = self.path_kind(place, &known.kind, &target.steps)?;
         if let Some(known) = self.lookup_mut(name) {
             known.changed = true;
         }
-        if target_kind != value_kind {
-            return Err(Problem::refused(
-                value.place,
-                format!(
-                    "this is {}, but it goes into {}",
-                    value_kind.describe(),
-                    target_kind.describe()
-                ),
-                "a value holds only values of its own type (D30, D58)",
-            )
-            .because(known.place, format!("`${name}` is declared here")));
-        }
-        Ok(())
+        self.value_into(
+            value,
+            &target_kind,
+            Context::Plain,
+            Some((known.place, format!("`${name}` is declared here"))),
+        )
     }
 
-    /// The kind at the end of `$x.a.b`, refusing locked fields on the way (D58).
-    fn field_path(
-        &self,
+    /// Checks a value going where `wanted` is expected. An array value is bare `[…]` there and must fit, and
+    /// `array[…]` is refused, since the kind is already known (D124).
+    fn value_into(
+        &mut self,
+        value: &Expression,
+        wanted: &ValueKind,
+        context: Context,
+        because: Option<(Place, String)>,
+    ) -> Result<(), Problem> {
+        match (&value.kind, wanted) {
+            (ExpressionKind::Array { named: true, .. }, ValueKind::Array { .. }) => {
+                Err(Problem::refused(
+                    value.place,
+                    "`array` is already known here",
+                    "an array value names its kind only where nothing else says it (D39, D124)",
+                )
+                .fix("`[…]`"))
+            }
+            (
+                ExpressionKind::Array {
+                    named: false,
+                    items,
+                },
+                ValueKind::Array { element, length },
+            ) => {
+                if BigInt::from(items.len()) != *length {
+                    let problem = Problem::refused(
+                        value.place,
+                        format!(
+                            "this array has {} items, but its type holds {length}",
+                            items.len()
+                        ),
+                        "an array holds exactly the number of items its type says (D70)",
+                    );
+                    return Err(with_because(problem, because));
+                }
+                for item in items {
+                    self.value_into(item, element, context, None)?;
+                }
+                Ok(())
+            }
+            _ => {
+                let kind = self.expression(value, context)?;
+                if &kind == wanted {
+                    return Ok(());
+                }
+                let problem = Problem::refused(
+                    value.place,
+                    format!(
+                        "this is {}, but it goes into {}",
+                        kind.describe(),
+                        wanted.describe()
+                    ),
+                    "a value goes only where its own type is held (D30, D58, D70)",
+                );
+                Err(with_because(problem, because))
+            }
+        }
+    }
+
+    /// The kind at the end of `$x.a[pos: 2]`, refusing locked fields on the way (D58, D64).
+    fn path_kind(
+        &mut self,
         place: Place,
         root: &ValueKind,
-        fields: &[String],
+        steps: &[Step],
     ) -> Result<ValueKind, Problem> {
         let mut kind = root.clone();
-        for field_name in fields {
-            let ValueKind::Named(type_name) = &kind else {
-                return Err(Problem::refused(
-                    place,
-                    format!("{} has no fields", kind.describe()),
-                    "only a `struct` has fields (D58)",
-                ));
+        for step in steps {
+            kind = match step {
+                Step::Item(index) => self.item_kind(&kind, index)?,
+                Step::Field(field_name) => self.field_kind(place, &kind, field_name, true)?,
             };
-            let Some(definition) = self.types.structure(type_name) else {
-                return Err(Problem::refused(
-                    place,
-                    format!("a `{type_name}` has no fields to change"),
-                    "a `union.tagged`'s data is reached with `match` (D72)",
-                ));
-            };
-            let Some(field) = definition
-                .fields
-                .iter()
-                .find(|field| &field.name == field_name)
-            else {
-                return Err(Problem::refused(
-                    place,
-                    format!("a `{type_name}` has no field `{field_name}`"),
-                    "a struct's fields are the ones it declares (D58)",
-                )
-                .because(definition.place, format!("`{type_name}` is declared here")));
-            };
-            if field.locked {
-                return Err(Problem::refused(
-                    place,
-                    format!("`{field_name}` is locked"),
-                    "a field written `.immut` never changes, whatever holds it (D58)",
-                )
-                .because(
-                    field.place,
-                    format!("`{field_name}` is declared `.immut` here"),
-                ));
-            }
-            kind = field.type_spec.kind();
         }
         Ok(kind)
+    }
+
+    /// The kind of `field_name` in a struct of `kind`; when `changing`, a locked field is refused (D58).
+    fn field_kind(
+        &self,
+        place: Place,
+        kind: &ValueKind,
+        field_name: &str,
+        changing: bool,
+    ) -> Result<ValueKind, Problem> {
+        let ValueKind::Named(type_name) = kind else {
+            return Err(Problem::refused(
+                place,
+                format!("{} has no fields", kind.describe()),
+                "only a `struct` has fields (D58)",
+            ));
+        };
+        let Some(definition) = self.types.structure(type_name) else {
+            return Err(Problem::refused(
+                place,
+                format!("a `{type_name}`'s data isn't reached with `.`"),
+                "a `union.tagged`'s data is reached with `match` (D72)",
+            ));
+        };
+        let Some(field) = definition
+            .fields
+            .iter()
+            .find(|field| field.name == field_name)
+        else {
+            return Err(Problem::refused(
+                place,
+                format!("a `{type_name}` has no field `{field_name}`"),
+                "a struct's fields are the ones it declares (D58)",
+            )
+            .because(definition.place, format!("`{type_name}` is declared here")));
+        };
+        if changing && field.locked {
+            return Err(Problem::refused(
+                place,
+                format!("`{field_name}` is locked"),
+                "a field written `.immut` never changes, whatever holds it (D58)",
+            )
+            .because(
+                field.place,
+                format!("`{field_name}` is declared `.immut` here"),
+            ));
+        }
+        Ok(field.type_spec.kind())
+    }
+
+    /// The kind of an item of an array of `kind`, checking the index is an integer (D64).
+    fn item_kind(&mut self, kind: &ValueKind, index: &Index) -> Result<ValueKind, Problem> {
+        let ValueKind::Array { element, .. } = kind else {
+            return Err(Problem::refused(
+                index.place,
+                format!("{} has no items", kind.describe()),
+                "only an `array` is indexed with `[pos: …]` or `[offset: …]` (D64, D70)",
+            ));
+        };
+        self.integer(&index.value, "an index")?;
+        Ok(element.as_ref().clone())
+    }
+
+    /// `for $x in $xs:`, going through an array front to back (D74).
+    fn for_each(
+        &mut self,
+        place: Place,
+        loop_name: Option<&String>,
+        variable: &str,
+        collection: &Expression,
+        body: &'program [Statement],
+    ) -> Result<(), Problem> {
+        let kind = self.place_kind(collection, Context::Plain)?;
+        let ValueKind::Array { element, .. } = &kind else {
+            return Err(Problem::refused(
+                collection.place,
+                format!("this is {}, which a loop can't go through", kind.describe()),
+                "a `for` loop goes through a `range[…]` or a collection (D74)",
+            ));
+        };
+        if !element.is_copied() {
+            return Err(Problem::not_decided(
+                collection.place,
+                "going through items that are structs, unions or arrays",
+            ));
+        }
+        if let Some(first) = self.lookup(variable) {
+            return Err(Problem::not_decided(
+                place,
+                format!(
+                    "declaring `${variable}` again while the first is still visible (shadowing)"
+                ),
+            )
+            .because(first.place, format!("the first `${variable}` is here")));
+        }
+        self.scopes.push(HashMap::new());
+        self.declare(variable, Role::LoopValue, element.as_ref().clone(), place);
+        self.loop_body(loop_name, body)?;
+        self.pop_scope()
     }
 
     fn for_loop(
@@ -1294,6 +1398,17 @@ impl Checker<'_> {
                 fields,
             } => self.build(place, type_name, case.as_deref(), fields, context),
             ExpressionKind::Field { base, name } => self.field_read(place, base, name, context),
+            ExpressionKind::Array { named: true, items } => self.named_array(place, items, context),
+            ExpressionKind::Array { named: false, .. } => Err(Problem::refused(
+                place,
+                "a bare `[…]` where nothing says it's an array",
+                "an array value names its kind where nothing else says it; nothing is guessed (D33, D124)",
+            )
+            .fix("`array[…]`")),
+            ExpressionKind::Item { base, index } => {
+                let base_kind = self.place_kind(base, context)?;
+                self.item_kind(&base_kind, index)
+            }
             ExpressionKind::Negate(inner) => self.operands(
                 place,
                 context,
@@ -1419,21 +1534,12 @@ impl Checker<'_> {
                     "each field is set once (D58)",
                 ));
             }
-            let kind = self.expression(&value.value, context)?;
-            let wanted = field.type_spec.kind();
-            if kind != wanted {
-                return Err(Problem::refused(
-                    value.value.place,
-                    format!(
-                        "this is {}, but `{}` holds {}",
-                        kind.describe(),
-                        value.name,
-                        wanted.describe()
-                    ),
-                    "a field holds only values of its own type (D58)",
-                )
-                .because(field.place, format!("`{}` is declared here", value.name)));
-            }
+            self.value_into(
+                &value.value,
+                &field.type_spec.kind(),
+                context,
+                Some((field.place, format!("`{}` is declared here", value.name))),
+            )?;
         }
         if let Some(missing) = declared_fields
             .iter()
@@ -1459,29 +1565,37 @@ impl Checker<'_> {
         context: Context,
     ) -> Result<ValueKind, Problem> {
         let base_kind = self.place_kind(base, context)?;
-        let ValueKind::Named(type_name) = &base_kind else {
+        self.field_kind(place, &base_kind, name, false)
+    }
+
+    /// `array[1, 2, 3]` where nothing says the kind: the items share one kind, and their number is the length
+    /// (D124).
+    fn named_array(
+        &mut self,
+        place: Place,
+        items: &[Expression],
+        context: Context,
+    ) -> Result<ValueKind, Problem> {
+        let Some((first, rest)) = items.split_first() else {
             return Err(Problem::refused(
                 place,
-                format!("{} has no fields", base_kind.describe()),
-                "only a `struct` has fields (D58)",
+                "an array of no items",
+                "an array holds a fixed number of values, at least one (D70)",
             ));
         };
-        let Some(definition) = self.types.structure(type_name) else {
-            return Err(Problem::refused(
-                place,
-                format!("a `{type_name}`'s data isn't read with `.`"),
-                "a `union.tagged`'s data is reached with `match` (D72)",
-            ));
-        };
-        let Some(field) = definition.fields.iter().find(|field| field.name == name) else {
-            return Err(Problem::refused(
-                place,
-                format!("a `{type_name}` has no field `{name}`"),
-                "a struct's fields are the ones it declares (D58)",
-            )
-            .because(definition.place, format!("`{type_name}` is declared here")));
-        };
-        Ok(field.type_spec.kind())
+        let element = self.expression(first, context)?;
+        for item in rest {
+            self.value_into(
+                item,
+                &element,
+                context,
+                Some((first.place, "the first item sets the kind".to_owned())),
+            )?;
+        }
+        Ok(ValueKind::Array {
+            element: Box::new(element),
+            length: BigInt::from(items.len()),
+        })
     }
 
     fn binary(
@@ -1588,7 +1702,9 @@ impl Checker<'_> {
             | ExpressionKind::Result
             | ExpressionKind::Call(_)
             | ExpressionKind::Build { .. }
-            | ExpressionKind::Field { .. } => false,
+            | ExpressionKind::Field { .. }
+            | ExpressionKind::Array { .. }
+            | ExpressionKind::Item { .. } => false,
         }
     }
 
@@ -1776,6 +1892,14 @@ fn breaks_out(body: &[Statement], loop_name: Option<&String>, depth: usize) -> b
         | StatementKind::Call(_)
         | StatementKind::Return { .. } => false,
     })
+}
+
+/// Adds a `because:` link when there is one.
+fn with_because(problem: Problem, because: Option<(Place, String)>) -> Problem {
+    match because {
+        Some((place, fact)) => problem.because(place, fact),
+        None => problem,
+    }
 }
 
 fn undeclared(place: Place, name: &str) -> Problem {

@@ -1,0 +1,7 @@
+// trace D124
+// trace D33
+// expect: refused at line 5
+fn.main [] -> void:
+    var $xs: infer = [1, 2, 3]; // here
+    return void;
+end fn.main

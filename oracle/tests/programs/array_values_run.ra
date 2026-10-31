@@ -1,0 +1,17 @@
+// trace D70
+// trace D64
+// trace D74
+// trace D124
+// expect: runs
+// output: 7 7 9
+// output: 7;8;4;
+fn.main [] -> void:
+    var $xs: array[int[min: 0, max: 9], length: 3] = [7, 8, 9];
+    std::print($xs[pos: 1], " ", $xs[offset: 0], " ", $xs[pos: 3], newline);
+    $xs[pos: 3] = 4;
+    for $x in $xs:
+        std::print($x, ";");
+    end for
+    std::print(newline);
+    return void;
+end fn.main

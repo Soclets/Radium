@@ -1,0 +1,14 @@
+// trace D58
+// trace D70
+// trace D124
+// expect: runs
+// output: 20
+struct week:
+    rain: array[int[min: 0, max: 99], length: 3];
+end struct week
+
+fn.main [] -> void:
+    var $w: week = week[rain = [10, 20, 30]];
+    std::print($w.rain[pos: 2], newline);
+    return void;
+end fn.main

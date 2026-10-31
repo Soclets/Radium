@@ -1,0 +1,7 @@
+// trace D70
+// trace D14
+// expect: check fails at line 5
+fn.main [] -> void:
+    var $xs: array[int[min: 0, max: 9], length: 3] = [1, 10, 3]; // here
+    return void;
+end fn.main

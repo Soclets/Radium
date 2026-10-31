@@ -1,0 +1,9 @@
+// trace D74
+// expect: refused at line 5
+fn.main [] -> void:
+    var $n: infer = 5;
+    for $x in $n: // here
+        std::print($x);
+    end for
+    return void;
+end fn.main

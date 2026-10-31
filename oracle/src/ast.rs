@@ -170,7 +170,10 @@ impl TypeSpec {
             Self::Integer(_) => ValueKind::Integer,
             Self::Bool => ValueKind::Bool,
             Self::Named(name) => ValueKind::Named(name.clone()),
-            Self::Array { .. } => ValueKind::Array,
+            Self::Array { element, length } => ValueKind::Array {
+                element: Box::new(element.kind()),
+                length: length.clone(),
+            },
         }
     }
 
@@ -197,7 +200,11 @@ pub(crate) enum ValueKind {
     Bool,
     /// A `struct` or `union.tagged`, by name.
     Named(String),
-    Array,
+    /// An `array`: what it holds, and how many (D70).
+    Array {
+        element: Box<ValueKind>,
+        length: BigInt,
+    },
 }
 
 impl ValueKind {
@@ -207,7 +214,9 @@ impl ValueKind {
             Self::Integer => "an integer".to_owned(),
             Self::Bool => "a `bool`".to_owned(),
             Self::Named(name) => format!("a `{name}`"),
-            Self::Array => "an `array`".to_owned(),
+            Self::Array { element, length } => {
+                format!("an `array` of {length} items, each {}", element.describe())
+            }
         }
     }
 
@@ -243,11 +252,11 @@ pub(crate) enum StatementKind {
         branches: Vec<Branch>,
         else_body: Option<Vec<Statement>>,
     },
-    /// `for $x in range[…]:` (D73, D74), optionally named (D77).
+    /// `for $x in range[…]:` or `for $x in $xs:` (D73, D74), optionally named (D77).
     For {
         loop_name: Option<String>,
         variable: String,
-        range: LoopRange,
+        source: LoopSource,
         body: Vec<Statement>,
     },
     /// `while …:` with an optional `decreases` (D75).
@@ -272,11 +281,36 @@ pub(crate) enum StatementKind {
     },
 }
 
-/// What an assignment changes: a value, or a field inside it, `$r.celsius` (D58).
+/// What a `for` loop goes through (D74).
+#[derive(Debug)]
+pub(crate) enum LoopSource {
+    /// `range[…]`.
+    Range(Box<LoopRange>),
+    /// A collection, front to back: `$readings`.
+    Each(Expression),
+}
+
+/// What an assignment changes: a value, or a part inside it, `$r.celsius` or `$xs[pos: 2]` (D58, D64).
 #[derive(Debug)]
 pub(crate) struct Target {
     pub(crate) name: String,
-    pub(crate) fields: Vec<String>,
+    pub(crate) steps: Vec<Step>,
+}
+
+/// One step into a value: a field, or an item (D58, D64).
+#[derive(Debug)]
+pub(crate) enum Step {
+    Field(String),
+    Item(Index),
+}
+
+/// `[pos: …]` counting from 1, or `[offset: …]` counting from 0 (D64).
+#[derive(Debug)]
+pub(crate) struct Index {
+    pub(crate) place: Place,
+    /// `offset:` rather than `pos:`.
+    pub(crate) from_zero: bool,
+    pub(crate) value: Box<Expression>,
 }
 
 /// `case status.failed[code = $c]:` and its body (D72).
@@ -392,6 +426,16 @@ pub(crate) enum ExpressionKind {
     Field {
         base: Box<Expression>,
         name: String,
+    },
+    /// An array value: bare `[1, 2, 3]` where the kind is known, `array[1, 2, 3]` where it isn't (D124).
+    Array {
+        named: bool,
+        items: Vec<Expression>,
+    },
+    /// Reading an item: `$xs[pos: 2]` (D64).
+    Item {
+        base: Box<Expression>,
+        index: Index,
     },
     Negate(Box<Expression>),
     Not(Box<Expression>),

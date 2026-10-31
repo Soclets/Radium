@@ -80,18 +80,18 @@ never ignored (D97), `my.` on clashes
 (D43), and `std::print`.
 
 The second slice adds `struct` with fields, building, `.immut` fields and fields that follow their holder (D58);
-`union.tagged` and `match` with every case covered (D59, D72); `array` types (D70); and ownership: `Give`, `Copy`,
+`union.tagged` and `match` with every case covered (D59, D72); arrays, with `[…]` and `array[…]` values (D124),
+`pos:`/`offset:` items and `for $x in $xs` (D64, D70, D74); and ownership: `Give`, `Copy`,
 `Lend`, `Lend.mut`, bare (lent), `Lent.mut` and `Given` parameters, no use after `Give`, and `must_Give` values handed
 off on every path (D5, D80, D84, D91, D92).
 
-**Not built yet:** reaching `array` items, `std::list` and the maps, going through collections, failures and
-`otherwise`, function collections, generics, `decreases` on functions, `Lend from`, hex numbers.
+**Not built yet:** `std::list` and the maps, failures and `otherwise`, function collections, generics, `decreases` on functions, `Lend from`, hex numbers.
 
 **Not decided, so reported:** parameters for `fn.main`, and anything it gives back but `void` (D101); a bare `int`;
 text types (`string`); shadowing; `fails … exactly when`; shields; `invariant`/`assert` spellings; a way to throw a
-result away on purpose (D97); how an `array` value is written; building a struct without every field; using a whole
+result away on purpose (D97); building a struct without every field; using a whole
 struct, union or array outside a call's ownership word (`=`, `return`, `equal`, printing); passing one with no
-ownership word; pulling a struct out of a `case`; how a `must_Give` value's duty ends in the function that receives
+ownership word; pulling a struct out of a `case`; going through items that are structs, unions or arrays; how a `must_Give` value's duty ends in the function that receives
 it; a `const` struct.
 
 ## Provisional readings
