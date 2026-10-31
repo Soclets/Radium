@@ -308,9 +308,11 @@ impl<'program> Checker<'program> {
                 ));
             }
             Role::LoopValue => {
-                return Err(Problem::not_decided(
+                return Err(Problem::refused(
                     line,
-                    format!("whether a loop's own value `${name}` may be changed isn't decided"),
+                    format!(
+                        "`${name}` is this `for` loop's own value, so it can't be changed inside the loop (D115)"
+                    ),
                 ));
             }
             Role::Var | Role::VarMut | Role::Parameter(_) => {}

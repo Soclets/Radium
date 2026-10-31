@@ -477,7 +477,7 @@ impl Parser {
             if place <= last_place {
                 return Err(Problem::refused(
                     line,
-                    "range labels go in their declared order: `from:`, then `to:` or `before:`, then `step_by:` (D54)",
+                    "range labels go in their declared order: `from:`, then `to:` or `before:`, then `step_by:` (D54, D113)",
                 ));
             }
             last_place = place;
@@ -487,7 +487,10 @@ impl Parser {
         }
         self.expect(&TokenKind::CloseBracket, "`]` closing the range")?;
         let from = from.ok_or_else(|| {
-            Problem::not_decided(range_line, "a range without `from:` isn't decided")
+            Problem::refused(
+                range_line,
+                "a range starts with `from:`; it is required (D113)",
+            )
         })?;
         let end = end.ok_or_else(|| {
             Problem::refused(range_line, "a range needs `to:` or `before:` (D73)")
@@ -920,7 +923,18 @@ impl Parser {
                 line,
                 "`infer` is for local values only; parameters and results write their types (D14, D108)",
             )),
-            "string" => Err(Problem::not_decided(line, "text types aren't designed yet")),
+            "string" => {
+                if self.eat(&TokenKind::Dot) && self.at_word("utf8") {
+                    return Err(Problem::refused(
+                        line,
+                        "a bare `string` is UTF-8 already; write `string` (D39, D120)",
+                    ));
+                }
+                Err(Problem::not_decided(
+                    line,
+                    "text types beyond \"a bare `string` is UTF-8\" aren't designed yet (D120)",
+                ))
+            }
             "void" => Err(Problem::refused(
                 line,
                 "`void` is only a function's result (`-> void`, D99), not a type for a value",

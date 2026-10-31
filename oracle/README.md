@@ -76,10 +76,8 @@ The oracle had to read these one way to run at all. None is a decision; each wai
 3. **Arithmetic is exact until a value is stored.** `$a + $b` is computed exactly, and checked when it lands in a
    bounded value or parameter.
 4. ~~Operator strength~~: decided, D111.
-5. **`std::print`:** prints its items one after another with nothing between, adds no line break of its own (`newline`
-   does), and is the only place text may appear while text types are open.
-6. **Range labels keep their declared order** (`from:`, then `to:` or `before:`, then `step_by:`), as D54 says for
-   labels; `from:` is required.
-7. **A failed check stops the program** and reports its line and rule. What a mode 1 or 2 binary does when a check
-   fails isn't decided.
-8. **A loop's own value is unbounded in the checker**, and changing it is reported as not decided.
+5. ~~`std::print`'s joining~~: decided, D112. Text may still appear only as a `print` item while text types are open.
+6. ~~Range label order~~: decided, D113.
+7. ~~What a failed check does~~: decided, D114. The oracle stops and reports `check fails at line N`, the same as a
+   mode 1 or 2 program would.
+8. ~~Changing a loop's own value~~: decided, D115.

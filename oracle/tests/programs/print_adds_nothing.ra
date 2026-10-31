@@ -1,0 +1,10 @@
+// trace D112
+// expect: runs
+// output: 12true
+// output: total: 42
+fn.main [] -> void:
+    std::print(1, 2, true);
+    std::print(newline);
+    std::print("total: ", 42, newline);
+    return void;
+end fn.main

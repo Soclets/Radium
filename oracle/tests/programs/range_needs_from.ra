@@ -1,0 +1,8 @@
+// trace D113
+// expect: refused at line 4
+fn.main [] -> void:
+    for $i in range[to: 5]: // here
+        std::print($i);
+    end for
+    return void;
+end fn.main

@@ -1,0 +1,8 @@
+// trace D115
+// expect: refused at line 5
+fn.main [] -> void:
+    for $i in range[from: 1, to: 10]:
+        $i = $i + 5; // here
+    end for
+    return void;
+end fn.main
