@@ -66,6 +66,10 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | lent (parameter) | bare (`Lent` is refused) | A parameter the function only reads; the caller keeps the value (call side: `Lend`). The default for a parameter | D91, D92 | `Lend` in parameters, `Lent` written alone |
 | lent.mut (parameter) | `Lent.mut` | A parameter the function may change; the caller keeps the value (call side: `Lend.mut`) | D91 | `Lend.mut` in parameters |
 | given (parameter) | `Given` | A parameter the function owns from then on (call side: `Give` or `Copy`) | D91 | `Give` in parameters, owned |
+| stored borrow | `Lend from`, `Lend.mut from` | A borrow kept in a name, a result, a field or an item, naming its source | D49, D126, D135 | reference, `&`, `&mut` |
+| named source | `` `text` `` | The name a struct gives the source it borrows from; a borrow from a parameter names the parameter instead | D49, D126 | lifetime (as Radium's word), `'a` |
+| lasts at least | `lasts_at_least` | A source that lives at least as long as another (equal is allowed) | D127 | `outlives`, `lasts at_least` |
+| program (source) | `program` | The source that lasts until the program ends: text and `const` values written in the code | D127 | `'static`, `forever`, `Lend.forever` |
 | linear value | `must_Give` | A value that must be handed off with `Give` exactly once before it goes out of scope | D5, D84 | `linear`, `must_use`, `once`, `must_finish` |
 | break | `break` | Stops the loop it is in | D77 | `stop`, `exit`, `leave`, `last` |
 | — | — | (No skip-this-trip statement: write the condition around the work) | D77 | `continue`, `skip`, `next` (as a statement) |

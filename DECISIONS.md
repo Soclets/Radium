@@ -575,7 +575,7 @@ Owner proposed `` `a` `` for lifetime names; design claude raised that backticks
 keyboards, and proposed naming the source instead; owner: "yes". A borrow that comes from a parameter **names that
 parameter**: `-> lend from $text str.utf8` (placeholder words). No abstract lifetime labels to match up. A **named
 lifetime** is used only where there is no parameter to point at, mainly a struct holding a borrow; its spelling is
-open but is not a backtick. Close to Swift's lifetime dependencies. The ownership words themselves are syntax step 5.
+open but is not a backtick (reversed by D126: backticks). Close to Swift's lifetime dependencies. The ownership words themselves are syntax step 5.
 
 ## D50 — `( )` runs, `[ ]` describes or holds (2026-10-30)
 
@@ -1978,6 +1978,287 @@ Proposed by design claude, owner: "yes": **`=`, `return`, fields and items take 
 `Lend.mut` there would store a borrow**, which needs lifetimes (D49), so it is **not decided** until lifetimes are
 designed. A whole value with no word in those places is refused. `Give` hands off only what is owned: a value that is
 only lent (a bare or `Lent.mut` parameter) can be copied but not given.
+
+## D126 — Named sources are written in backticks (2026-10-31)
+
+Owner proposed `` `text` `` again for the name a struct gives the source it borrows from; design claude weighed `#`
+(read as "comment" by Python and shell programmers, a D33 trap) and dropping borrows from structs (reverses D5), and
+recommended the backticks; owner: "yes, but not exactly that syntax". **This reverses D49's "not a backtick"**: a
+**named source** is written in backticks, `` `text` ``. Backticks mean nothing else in Radium (D33). D49's rest stands:
+a borrow from a parameter names the parameter (`Lend from $article string`), so a function never needs a name of its
+own. Design claude's first try was ``struct word_view [`text`]:``, ``words: Lend from `text` string;``,
+``-> word_view[`text` = $article]``. Owner asked "is it consistent yet?"; design claude: the `=` isn't, since inside
+`[ ]` `=` sets a value's field (`reading[time = 3600]`) while a type takes labels with `:` (`int[min: 0]`,
+`array[…, length: 3]`, D50). Owner: "yes". **A type fills in its sources with `:`**:
+
+```
+struct index [`text`, `table`: lasts_at_least `text`]:
+    words: Lend from `text` string;
+    lookup: Lend from `table` word_list;
+end struct index
+
+fn build [$article: string, $list: word_list] -> index[`text`: $article, `table`: $list]:
+    return index[words = Lend $article, lookup = Lend $list];
+end fn build
+```
+
+`index[`text`: $article]` is a type (where it borrows from); `index[words = Lend $article]` is a value (what its fields
+hold).
+Owner, asked whether this was the syntax meant by "not exactly that syntax": "meant". **Declaring, using and filling in
+named sources are settled as above.**
+
+The meaning is Rust's lifetimes: a struct that holds a borrow carries a named source, it never outlives that source,
+and a function's body is checked against what its result claims. Unlike Rust, no source is ever left out for the
+checker to fill in (D49, D125).
+
+## D127 — Borrowing from either, and comparing sources (2026-10-31)
+
+Design claude listed what Rust's lifetimes can say that Radium couldn't yet; owner: "I think we should have 2 & 3".
+Radium has:
+
+1. **A borrow from either of several sources**: the result borrows from one of them, so it lasts only as long as the
+   shortest (Rust: `fn longest<'a>(x: &'a str, y: &'a str) -> &'a str`).
+2. **Comparing sources**: saying one source lives at least as long as another (Rust: `'a: 'b`), and a source that
+   **lives forever**, for the whole program (Rust: `'static`).
+
+Design claude proposed brackets for the first, since a list of sources is what `[ ]` holds (D50); owner asked why not
+`or`, and why `and` is allowed (see below); owner: "yes". **A borrow from either of several sources lists them in
+`[ ]`** (respelled `Lend from <$x, $y>` by D138):
+
+```
+fn longest [$x: string, $y: string] -> Lend from [$x, $y] string:
+```
+
+The result is usable only while every listed source is alive. `or` is not used: it would give `or` a second meaning
+(D33), look like the refused expression `$x or $y`, and suggest the result lasts while either one does. The spelling
+for "lives forever" is below.
+
+**Comparing sources is written `lasts_at_least`**, attached with `:` to the source that must last at least as long,
+like a placeholder's requirement (`[?T: ordered]`):
+
+```
+struct index [`text`, `table`: lasts_at_least `text`]:
+```
+
+Design claude first proposed `outlives` (Rust's word), but in English it sounds strictly longer, and equal is allowed;
+then `lasts at_least`, but owner: the space "kinda implies another option" (`lasts at_most`, `lasts equal`). Design
+claude found no use for the other direction (it only lets the sources be listed in another order), so there is **one
+form, one word**. Owner: "If you can't find a good symbol for it, we'll go with that". Design claude found none: D34
+keeps symbols to school maths, where Radium already spells ≥ as `at_least`; `>` is strict; `:` already attaches a
+rule; `@` is the isotope mark (D28); `#` reads as a comment (D87); `->` means "gives back" (D98). Design
+claude proposed refusing the same fact written twice; owner (later the same day): "yes". **The same `lasts_at_least`
+fact written twice is refused**, on a struct or in `requires` lines (D132), as `array[…]` written twice is (D124).
+
+**A source that lives until the program ends is `program`**, written where any source goes:
+
+```
+fn greeting [] -> Lend from program string:
+    return Lend "hello";
+end fn greeting
+```
+
+and ``[`text`: lasts_at_least program]``, ``word_view[`text` = program]``. Design claude first proposed `forever`; owner:
+"Kinda sounds like you're lending from the loop" (D7). `Lend.forever` was set aside: it fits only a borrow's source, not
+comparing or filling in. Owner asked "accurate word?"; design claude: text and `const` values written in the code are
+stored in the program, true in both senses (the code, and the program running). A value made while running and never
+freed (Rust's `Box::leak`) would last as long as the program without coming from it; Radium has nothing like that.
+Owner: "yes". Rust's `'static` was not used: `static` means unrelated things in C.
+
+`and` is not used for "from either": `Lend from $x and $y` would give `and` a second meaning (D33), since a source
+isn't true or false. Owner raised that `and` also joins a placeholder's requirements (`[?T: ordered and printable]`);
+design claude: that is the same meaning as boolean `and`, since each requirement is a condition, checked while
+compiling; owner: "yes", **it keeps its `and`**.
+
+## D128 — Read the implementation rules before contributing (2026-10-31)
+
+Owner's rule, after design claude planned oracle work that would have hidden readings (against D93's "readings are
+listed, not hidden"): **any AI must read `implementation-rules/` before contributing**, once, **and again after a
+compaction** (when its context is summarised and the details are lost).
+
+## D129 — A borrow ends at its last use (2026-10-31)
+
+Proposed by design claude, owner: "yes". **A borrow lasts until the last time its holder is used**, not until its block
+closes (Rust's non-lexical lifetimes). While it lasts, the source can't change or be given away (D5); after it, it can.
+
+```
+var $r: reading = reading[time = 0, celsius = 20];
+var $v: Lend from $r reading = Lend $r;
+std::print($v.celsius, newline);   // last use of $v
+$r.celsius = 25;                   // fine: $r is no longer lent
+```
+
+Radium has no bare inner block for ending a borrow early, so "end of block" would force awkward code. When a later
+use does keep the borrow alive, the message points at that use with a `because:` link (D122).
+
+## D130 — A borrow comes from a source its type names (2026-10-31)
+
+Proposed by design claude, owner: "yes". **A borrow can go only into a holder whose type names its source**, even when
+another source would last long enough:
+
+```
+var $v: Lend from $b reading = Lend $a;          // refused: $v says it is from $b
+var $w: Lend from [$a, $b] reading = Lend $a;    // fine: $a is one of the sources named
+```
+
+Unlike Rust, which accepts any source that lives long enough. The type is how readers and the checker know which
+source is lent while the holder is in use (D129); a holder naming `$b` but holding `$a` would let `$a` change while
+it is lent.
+
+## D131 — `lasts_at_least` is checked at each call (2026-10-31; reverted the same day)
+
+**Reverted**: owner asked to revert it and see the pros and cons, so where the check happens is **open again**. The
+number stays taken. What it said: proposed by design claude, owner: "yes". When a function fills a struct's sources with its parameters (D126's
+`build`), the struct's `lasts_at_least` rules (D127) are **checked at every call**, against what the caller passes:
+`build(Lend $a, Lend $l)` is refused if `$l` doesn't last at least as long as `$a`. Inside the function the rule holds,
+since every parameter lasts the whole call. The function writes nothing extra (unlike Rust's `where 'u: 't`): the rule
+is written once, on the struct its result names, and the message links to it (D122).
+
+## D132 — A function states which parameter lasts at least as long (2026-10-31)
+
+Replaces the reverted D131. Design claude laid out the pros and cons of checking a struct's `lasts_at_least` rules
+(D127) at each call (A) or having the function state them (B); owner: "Look at Radium's description in README". Design
+claude: the README accepts a steep learning curve for clear syntax and no mistakes, so A's saving in writing counts for
+little and its hidden requirement counts against it; owner: "yes". **When a function fills a struct's sources with its
+parameters, it states the `lasts_at_least` rules those parameters must meet**, so its contract shows everything a
+caller must meet, as `requires` does (D53). Like Rust's `where 'u: 't`. Leaving one out is refused at the function.
+
+Proposed by design claude, owner: "yes". **It is a `requires` line**, with the word from D127:
+
+```
+fn build [$article: string, $list: word_list] -> index[`text`: $article, `table`: $list]:
+    requires $list lasts_at_least $article;
+    return index[words = Lend $article, lookup = Lend $list];
+end fn build
+```
+
+`requires` keeps its one meaning, what callers must guarantee (D53): the fact is true or false like any other. It is
+checked by the ownership checker rather than Geiger, which the reader doesn't need to know. Written inside the
+parameter list instead, it would put a second `:` on a parameter that already uses `:` for its type.
+
+## D133 — A source that no field uses is refused (2026-10-31)
+
+Proposed by design claude, with pros and cons; owner: "yes". **Every source a struct declares must be used by at least
+one field**:
+
+```
+struct word_view [`text`, `extra`]:      // refused: no field borrows from `extra`
+    words: Lend from `text` string;
+end struct word_view
+```
+
+An unused source means nothing and is most likely a mistake, yet every user would still fill it in and, by D129, keep
+that value lent for no reason. The cost is that a struct can't reserve a source for a later field. Rust refuses it too
+(E0392).
+
+## D134 — Each source has its own name (2026-10-31)
+
+Proposed by design claude, owner: "yes". **Two sources of one struct with the same name are refused**
+(``struct pair [`text`, `text`]:``), as fields (D58) and parameters (D31) already are: a field's ``Lend from `text` ``
+could otherwise mean either one.
+
+## D135 — Storing a `Lend.mut` (2026-10-31)
+
+Proposed by design claude, owner: "yes". An exclusive borrow is stored as D5 allows, written **`Lend.mut from`**, the
+same word as at a call (D80):
+
+```
+struct counter [`tally`]:
+    target: Lend.mut from `tally` reading;
+end struct counter
+
+var $c: counter[`tally`: $r] = counter[target = Lend.mut $r];
+$c.target.celsius = 25;            // changes $r through the borrow
+```
+
+- **Through the holder the value can change.**
+- **While the borrow lasts (D129), the source can't be used at all**: not read, changed, lent or given.
+- **A plain `Lend from` is read-only**: changing through it is refused.
+
+## D136 — A function's own named sources (2026-10-31)
+
+Design claude first proposed writing a borrowing struct bare on a parameter; owner: "Is that consistent?"; design
+claude: no, it leaves sources out (against D5 and D126) and spells one type two ways, while D49 allows a named source
+"where there is no parameter to point at", which is exactly a parameter's inner borrow. Owner: "yes". **A function
+declares its own named sources in a bracket group before its parameters**, as placeholders are (`fn largest [?T]`):
+
+```
+fn count_words [`t`] [$view: word_view[`text`: `t`]] -> int[min: 0, max: 1000]:
+```
+
+Proposed by design claude, owner: "yes": **a struct's source rules apply as they are**: `lasts_at_least` in the group
+(D127), every source used, here by a parameter's type (D133), and each with its own name (D134).
+
+Proposed by design claude, owner: "yes": **placeholders and sources share one group**, since both are what the
+function leaves for the caller's types to decide (D50), and `?` and `` ` `` tell them apart:
+``fn pick [?T: ordered, `t`] [$view: holder[?T, `text`: `t`]] -> ?T:`` (now in `< >`, D138).
+
+Owner asked what is consistent; design claude: Radium keeps the declared order (labels, D54; `range`, D113;
+parameters) and never sorts by kind. Owner: "yes". **The writer chooses the group's order, and every use keeps it**:
+
+```
+struct holder <?T, `text`>:
+var $h: holder<reading, `text`: $a> = …;      // fine
+var $h: holder<`text`: $a, reading> = …;      // refused: out of order
+```
+
+## D137 — `<` and `>` need spaces (2026-10-31)
+
+Owner asked whether `<` and `>` need spaces; design claude: only `x` does (D34), `$a<$b` is accepted. Owner: "Oh my
+god, why didn't it need spaces. It should". **The comparisons `<` and `>` need a space on each side**, as `x` does:
+`$a < $b`; `$a<$b` is refused. (Raised while weighing `< >` as brackets for placeholders and sources, which is still
+open.)
+
+## D138 — Three brackets: `( )`, `[ ]` and `< >` (2026-10-31)
+
+While choosing where a function's placeholders and sources go (D136), owner asked "should we add `<>` brackets?".
+Design claude: Radium had ruled `< >` out because `<` and `>` are comparisons (D34, D69); owner pointed out that `->`
+is read as one thing, then that comparisons should need spaces (D137), which keeps the two apart. Owner: `< >` must be
+defined like `[ ]` and `( )`, and `[ ]` redefined; design claude drafted both; owner: "yes". **Replaces D50's two
+brackets with three**:
+
+- **`( )` runs something**: a call (unchanged).
+- **`[ ]` describes or holds values**: a definition's parameters, a type's bounds and length, indexes, building a
+  struct or case, array values, ranges, presets, `old[…]`.
+- **`< >` fills in what a definition leaves open: types and sources.** Declared on the definition, filled where it's
+  used.
+
+```
+struct index <`text`, `table`: lasts_at_least `text`>:
+    words: Lend from `text` string;
+    lookup: Lend from `table` word_list;
+end struct index
+
+fn largest <?T: ordered> [$items: std::list<?T>[min: 1, max: 100]] -> ?T:
+var $xs: array<int[min: 0, max: 9]>[length: 3] = [1, 2, 3];
+var $i: index<`text`: $article, `table`: $list> = build(Lend $article, Lend $list);
+```
+
+The test for a new construct: a type or a source goes in `< >`; a value goes in `[ ]`. This respells D69's
+placeholders, D70's array type (its element moves to `< >`, its length stays in `[ ]`), D126's and D136's sources, and
+`std::list`. Integer bounds stay `int[min: 0, max: 9]`, since bounds are values. CyborgPL's lesson in D50 ("place
+generics in this rule when they are designed") is met.
+
+Owner asked whether the spacing needed a clearer rule (design claude's first wording, "no space after the name", didn't
+cover `Lend from <$x, $y>`); design claude proposed it by spacing alone; owner: "yes". **An opening `<` has no space
+after it, and a closing `>` has no space before it; a comparison has a space on each side (D137).** `$a<$b` and
+`holder< int >` are refused.
+
+Design claude found D127's `Lend from [$x, $y]` puts sources in `[ ]`, against the test above; owner: "yes" (typed
+"yedx"). **"From either" is respelled `Lend from <$x, $y>`.** Still to check against the new rule: an interface's associated
+type (`walkable [item = ?E]`, D69).
+
+## D139 — No borrow from a fresh value (2026-10-31)
+
+Proposed by design claude, owner: "yes". **When a function's result borrows from a parameter, the argument for it must
+be a named value**; a fresh value there is refused:
+
+```
+var $w: Lend from <$r> reading = warmer(Lend $r, reading[time = 0, celsius = 30]);   // refused
+```
+
+A fresh value has no holder (D125), so it would end with its line while the borrow lasts, and no type could name it.
+Keeping it alive instead (Rust's temporary lifetime extension) would be a hidden holder. A fresh value can still go
+into a lent parameter when nothing borrows from it.
 
 ---
 

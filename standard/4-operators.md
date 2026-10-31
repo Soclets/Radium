@@ -3,7 +3,8 @@
 ## 4.1 Symbols and words
 
 1. A symbol is used only where school maths writes it the same way, with no hidden choice: `+`, `-`, `<`, `>`, and
-   `x` for multiply (D34). `x` needs spaces around it.
+   `x` for multiply (D34). `x`, `<` and `>` need spaces around them
+   (D34, D137).
 2. Where there is a hidden choice, a trap, or no school symbol, the operator is a word (D34):
 
    | Operator | Meaning |
@@ -19,6 +20,9 @@
    *Tests:* `school_maths`, `comparisons`, `slash_is_not_division`.
 4. `-` before a value negates it: `-1`, `-$x`.
 5. Brackets `( )` group, as in maths: `($a + $b) x 2`. It is the one place `( )` runs nothing (D50).
+   **`<` and `>` as comparisons have a space on each side**: `$a<$b` is refused. With no space inside, `< >` are
+   brackets for types and sources (D137, D138).
+   *Tests:* `comparison_needs_spaces`.
 6. **How strongly operators bind** without brackets, strongest first (D111):
 
    | Strength | Operators |

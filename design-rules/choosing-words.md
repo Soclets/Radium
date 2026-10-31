@@ -38,6 +38,6 @@ words; names in the implementation's code follow D19.
 ## Symbols or words
 
 - **A symbol only where school maths writes it the same way, with no hidden choice**: `+`, `-`, `<`, `>`, and `x` for
-  multiply (spaces around it, so `0x3` stays hex).
+  multiply (spaces around it, so `0x3` stays hex). `<` and `>` need spaces too (D137).
 - **A word where there is a hidden choice, a trap, or no school symbol**: `div`, `mod`, `equal`, `not_equal`,
   `at_most`, `at_least`, `and`, `or`, `not`, `concat`.

@@ -54,8 +54,9 @@
 
 ## 9.4 `array`
 
-1. `array[element, length: N]` is built in: a fixed number of values in a row, stored inside its holder, with no heap
-   (D70). `N` is at least 1.
+1. `array<element>[length: N]` is built in: a fixed number of values in a row, stored inside its holder, with no heap
+   (D70). `N` is at least 1. The element is a type, so it goes in `< >`; the length is a value, so it goes in `[ ]`
+   (D138). `array[element, length: N]` is refused.
 2. **An array value is bare `[1, 2, 3]` where the kind is already known** (a declaration, a parameter, a field or a
    result says it's an array), and its items and length must fit that type. **Where nothing says the kind** (`: infer`)
    it is `array[1, 2, 3]`: Geiger works out the item type, and the length is the number of items. A bare `[…]` there
@@ -70,7 +71,7 @@
    `array_kind_not_repeated`, `array_needs_its_length`, `array_item_bounds_checked`, `array_index_needs_its_label`,
    `array_index_outside`, `array_item_change_bounds_checked`, `array_items_follow_holder`,
    `array_lent_to_a_function`, `array_inside_a_struct`, `loop_needs_a_collection`, `array_type_accepted`,
-   `array_of_nothing_refused`.
+   `array_of_nothing_refused`, `array_type_old_spelling`.
 
 ## 9.5 Whole values
 

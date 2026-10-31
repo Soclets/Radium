@@ -15,6 +15,8 @@ rules every new choice is checked against), `implementation-rules/` (the rules f
   proposal. Numbers are permanent (code cites them with `trace D<n>`, D18). New concepts go into `TERMS.md`. When a
   decision creates or changes a general rule, update its file in `design-rules/` or `implementation-rules/` too. When
   it settles behaviour, update `standard/` (SSS: Radium) and the oracle (D110).
+- **Read `implementation-rules/` in full before contributing**, once per session and again after every compaction
+  (D128).
 - **Commit and push only when the owner says so.** Commit messages follow D90: `kind.folder.narrowing: sentence`
   (see `implementation-rules/branches-and-merging.md`).
 
