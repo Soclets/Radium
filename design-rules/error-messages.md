@@ -1,6 +1,6 @@
 # Error messages
 
-From D116 to D119. What Curie (and the oracle) say when they refuse a program or can't prove a check.
+From D116 to D119 and D122. What Curie (and the oracle) say when they refuse a program or can't prove a check.
 
 - **Only what's certain.** A message never contains advice that could be wrong.
 - **Exactly one fix: show it**, as code (`newln` → `newline`).
@@ -25,3 +25,5 @@ From D116 to D119. What Curie (and the oracle) say when they refuse a program or
   ```
 - **The first word says the kind** (D119): `refused:` (a definite mistake), `unproven:` (Geiger could prove it neither
   way; it needs a hint), `check failed:` (it went wrong while running).
+- **`because:` links** show what led to the error (D122): each has its place, its code line, a pointer and one fact
+  (`$file was handed over here`), listed in the order they happened. Only links Curie knows for certain.

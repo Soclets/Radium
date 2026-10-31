@@ -1780,7 +1780,7 @@ for $i in range[to: 5, from: 1]:      // refused: out of order
 for $i in range[to: 5]:               // refused: no from:
 ```
 
-## D114 — A failed check stops the program (2026-10-30)
+## D114 — A failed check stops the program (2026-10-30; its one-line message replaced by D123)
 
 Proposed by design claude, owner: "yes". In mode 1 and mode 2 builds (D9), Curie places a check at every check site;
 the program carries them out while it runs, through the runtime Curie links into every program (D16). **When a check
@@ -1901,6 +1901,34 @@ length($t)              // refused: say which
 ```
 
 The names are placeholders.
+
+## D122 — `because:` links show what led to an error (2026-10-31)
+
+Owner: "there should be a way to say chains in the err msgs. Like, something happened above that caused the err
+here". Design claude proposed the shape, owner: "yes". After the labelled lines (D118), a message may add **`because:`
+links**: each gives its own place in both forms (D117), its code line, a `^` pointer, and one short fact about what
+happened there. **Links are listed in the order they happened**, top to bottom like the program, and each is a step
+towards the error. **They are facts, never guesses** (D116): Curie adds a link only when it knows that step led to the
+error.
+
+```
+refused: report.ra:6:10, line 6 column 10
+ 6 |     show(Give $file);
+   |               ^^^^^
+ what: $file can't be used here
+ why:  a value handed over with Give can't be used afterwards (D80, D84)
+ because: report.ra:4:11, line 4 column 11
+ 4 |     close(Give $file);
+   |                ^^^^^
+       $file was handed over here
+```
+
+## D123 — A failed check uses the full message layout (2026-10-31; amends D114)
+
+Design claude pointed out that D114's one stderr line predates the layout of D116–D122; owner: "yes". **A check that
+fails while the program runs reports in the same layout as every other message**: `check failed:` and the place twice
+(D117, D119), the line with its pointer, `what:`, `why:`, `when:` with the actual values, and `because:` links (D118,
+D122). The rest of D114 stands: the program stops at once, nothing runs after it, and it exits with a failure status.
 
 ---
 

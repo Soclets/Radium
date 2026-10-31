@@ -23,8 +23,22 @@ and the inside is its writer's responsibility.
 - **Refused**: the compiler, Curie, won't build the program.
 - **Check site**: a place that could go wrong. In the final build each one is proven; in modes 1 and 2 it is also
   checked as the program runs (D9).
-- **A failed check** (modes 1 and 2 only) stops the program at once: one line on stderr naming the file, the line and
-  the rule, then a failure exit status (target-defined). It can't be handled; nothing runs after it (D114).
+- **A failed check** (modes 1 and 2 only) stops the program at once, reports on stderr in the message layout below,
+  and exits with a failure status (target-defined). It can't be handled; nothing runs after it (D114, D123).
+
+## Messages
+
+Every refusal and failed check is reported in one layout (D116–D119, D122), described in
+[`design-rules/error-messages.md`](../design-rules/error-messages.md):
+
+1. the kind (`refused:`, `unproven:` or `check failed:`) and the place twice: `file:line:column` for tools, counted in
+   UTF-8 bytes, then `line N column M` for people, counted in grapheme clusters;
+2. the line itself, with a `^` pointer under the exact part;
+3. `what:` (or `fix:` when there is exactly one fix), `why:` with the rule's decision number, and `when:` with the
+   values that break it;
+4. `because:` links to earlier steps that led to it, in the order they happened.
+
+A message says only what's certain: no suggestions when there is more than one possible fix.
 - **Writer**: whoever writes a Radium program (D21).
 
 ## Contents
