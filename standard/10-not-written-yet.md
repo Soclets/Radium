@@ -1,4 +1,4 @@
-# 9. Not written yet
+# 10. Not written yet
 
 ## 9.1 Decided, not yet written here
 
@@ -6,9 +6,7 @@
 |---|---|
 | Shields: unproven code, its walls and its reason | D6 |
 | Failures: precise failure sets, `fails` lines, `otherwise`, handler narrowings | D11, D56, D57, D78 |
-| `struct` and its fields | D58 |
-| `union.tagged` and `match`; bare `union` in shields only | D59, D72 |
-| `array`, `std::list`, the maps; `pos:` and `offset:` | D64, D66, D70 |
+| `std::list` and the maps | D64, D66, D70 |
 | Function collections (`narrowings.fn`), presets, `defaults.fixed` | D57 |
 | Generics: `?T`, `interface`, `type_set` | D69 |
 | Imports: isotopes (`@`) and compounds; floats, decimals and decimal literals | D22–D25, D28, D104 |

@@ -28,5 +28,4 @@ end if
 ## 5.3 `match`
 
 Choosing between a tagged union's cases is `match` … `case` … `end match`; every case must be covered and branches
-never fall through (D72). It will be written with tagged unions; see section 9.
-*Tests:* `match_not_built` (the oracle reports it as not built yet).
+never fall through (D72). See section 9.3.

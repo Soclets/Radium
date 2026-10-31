@@ -51,4 +51,5 @@ A message says only what's certain: no suggestions when there is more than one p
 6. [Loops](6-loops.md)
 7. [Functions](7-functions.md)
 8. [Ownership](8-ownership.md)
-9. [Not written yet](9-not-written-yet.md)
+9. [Structs, unions and arrays](9-structs-and-unions.md)
+10. [Not written yet](10-not-written-yet.md)
