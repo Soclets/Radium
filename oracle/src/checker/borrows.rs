@@ -213,11 +213,13 @@ impl Checker<'_> {
         Ok(())
     }
 
-    /// Whether `longer` lasts at least as long as `shorter`, where the function being checked is (D127, D132).
+    /// Whether `longer` lasts at least as long as `shorter`, where the function being checked is (D127, D132). A
+    /// value lasts until the end of its block (D140), so:
     /// `program` lasts longest; a parameter outlasts every local name; of two visible locals, the one declared first
     /// lasts at least as long; two parameters compare only through `requires` lines; the function's own sources
     /// outlast its locals and compare by their own rules.
     pub(super) fn lasts(&self, longer: &Source, shorter: &Source) -> bool {
+        // trace D140: every name ends with its block, so an earlier one in view lasts at least as long.
         if longer == shorter {
             return true;
         }
@@ -297,7 +299,7 @@ impl Checker<'_> {
                 };
                 let held = Self::type_of(known);
                 Ok(match handoff {
-                    // trace D126: lending a borrow lends what it borrows.
+                    // trace D142: lending a `Lend` borrows from what it borrows from.
                     Handoff::Lend | Handoff::LendMut => match held {
                         TypeSpec::Borrow { .. } => Some(held),
                         inner => Some(TypeSpec::Borrow {
@@ -306,7 +308,7 @@ impl Checker<'_> {
                             inner: Box::new(inner),
                         }),
                     },
-                    // A copy of a borrow is a value of its own; a copy of a struct keeps the struct's borrows.
+                    // trace D143: a copy of a borrow is a value of its own; a copy of a struct keeps its borrows.
                     Handoff::Copy => {
                         let owned = held.owned().clone();
                         holds_a_borrow(&owned).then_some(owned)
@@ -668,9 +670,9 @@ impl Checker<'_> {
         Ok(())
     }
 
-    /// Where `$holder` is next used after the statement being checked: later in its blocks, or anywhere in a loop
-    /// around them that it was declared outside of, since the next trip comes after. The flag says the use is a whole
-    /// new value for it.
+    /// Where `$holder` is next used after the statement being checked, on any path (D144): later in its blocks, or
+    /// anywhere in a loop around them that it was declared outside of, since the next trip comes after. The flag says
+    /// the use is a whole new value for it.
     fn used_later(&self, holder: &str, holder_scope: usize) -> Option<(Place, bool)> {
         for (rest, block_scope) in self.rest.iter().rev() {
             if *block_scope < holder_scope {

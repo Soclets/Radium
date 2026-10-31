@@ -1,0 +1,17 @@
+// trace D144
+// trace D129
+// expect: refused at line 12
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 0, celsius = 20];
+    var $v: Lend from $r reading = Lend $r;
+    $r.celsius = 25; // here
+    if $r.time > 100:
+        std::print($v.celsius, newline);
+    end if
+    return void;
+end fn.main

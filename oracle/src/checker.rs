@@ -579,7 +579,17 @@ impl<'program> Checker<'program> {
             self.borrow_into(value, type_spec, &Destination::Name(name))?;
             (kind, Some(type_spec.clone()))
         } else {
-            let kind = self.expression(value, Context::Plain)?;
+            let kind = if let ExpressionKind::Handoff { handoff, name } = &value.kind {
+                // trace D125: `=` takes `Give` or `Copy` with `: infer` too; the kind is the handed-off value's.
+                let Some(known) = self.lookup(name) else {
+                    return Err(undeclared(value.place, name));
+                };
+                let kind = known.kind.clone();
+                self.hand_off(value.place, *handoff, name, &kind, None)?;
+                kind
+            } else {
+                self.expression(value, Context::Plain)?
+            };
             (kind, self.value_type(value)?)
         };
         if holder == Holder::Const && !value_kind.is_copied() {

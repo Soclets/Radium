@@ -439,7 +439,7 @@ impl<'program> Machine<'program> {
             callee.declare(&parameter.name, slot);
         }
         let result = self.invoke(function, &mut callee, call.place)?;
-        // trace D80: what a `Lend.mut` lent comes back changed, to the value that lent it.
+        // trace D80: what a `Lend.mut` lent comes back changed, to the value that lent it (copy-in, copy-out, D141).
         for (parameter, binding) in function
             .parameters
             .iter()
@@ -851,8 +851,8 @@ impl<'program> Machine<'program> {
             // trace D132: which source lasts longer is checked before the program runs.
             ExpressionKind::LastsAtLeast { .. } => Ok(Value::Bool(true)),
             // trace D125: the hand-off itself is checked before the program runs; here the value is just passed on.
-            // trace D126: a stored `Lend` reads like its value, and its source can't change while it is used (D129),
-            // so a copy behaves the same.
+            // trace D141: a stored `Lend` runs as a copy, which behaves the same, since its source can't change
+            // while it is used (D129).
             ExpressionKind::Handoff { name, .. } => frame
                 .lookup(name)
                 .map(|slot| slot.value.clone())

@@ -124,15 +124,19 @@ The oracle had to read these one way to run at all. None is a decision; each wai
 11. **A value declared outside a loop can't be handed off with `Give` inside it**, since a later trip would hand it
     off again, even if the trip that gives it then leaves the loop.
 12. **A value pulled out by `case` doesn't change.**
-13. **`Lend.mut` hands the function a copy and takes the changed copy back** when the call ends. With nothing else
-    allowed to use the value meanwhile (D5), that behaves the same as lending the value itself.
-14. **How long names last, for `lasts_at_least`** (D127, D132): of two names in view, the one declared first lasts at
-    least as long; a parameter outlasts every name inside its function; a function's own source outlasts those names
-    too; `program` outlasts everything. Two parameters compare only through `requires` lines.
-15. **A stored `Lend` holds a copy.** Since its source can't change while the borrow is used (D129), reading through it
-    gives the same values as reading the source.
-16. **Lending a borrow lends what it borrows**: `Lend $v`, where `$v` is `Lend from $r reading`, borrows from `$r`.
-    **`Copy` of a borrow is a value of its own**, with no borrow; `Copy` or `Give` of a struct holding borrows keeps
-    them.
-17. **A use is any later mention**: the borrow counts as used if its holder appears anywhere later in its blocks,
-    or anywhere in a loop around them that it was declared outside of, on any path, as Rust counts it.
+13. ~~`Lend.mut` as copy-in, copy-out~~: an oracle method, D141 (below).
+14. ~~How long names last~~: decided, D140. A function's own source outlasts its names too, since it comes from the
+    caller; two parameters compare only through `requires` lines (D132).
+15. ~~A stored `Lend` as a copy~~: an oracle method, D141 (below).
+16. ~~Lending and copying a borrow~~: decided, D142 and D143.
+17. ~~What counts as a later use~~: decided, D144.
+
+## Oracle methods
+
+Ways the oracle runs something that can't give different results from what is decided (D141). They are not open
+questions.
+
+- **`Lend.mut` hands the function a copy and takes the changed copy back** when the call ends. Nothing else may use
+  the value meanwhile (D5), so it behaves the same as lending the value itself.
+- **A stored `Lend` holds a copy.** Its source can't change while the borrow is used (D129), so reading through it
+  gives the same values as reading the source.

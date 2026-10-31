@@ -1,0 +1,19 @@
+// trace D142
+// expect: runs
+// output: 20
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn pick [$a: reading] -> Lend from $a reading:
+    var $view: Lend from $a reading = Lend $a;
+    return Lend $view;
+end fn pick
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 0, celsius = 20];
+    var $w: Lend from $r reading = pick(Lend $r);
+    std::print($w.celsius, newline);
+    return void;
+end fn.main
