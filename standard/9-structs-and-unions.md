@@ -56,9 +56,21 @@
 
 1. `array[element, length: N]` is built in: a fixed number of values in a row, stored inside its holder, with no heap
    (D70). `N` is at least 1.
-2. An item is reached by `pos:` (counting from 1) or `offset:` (counting from 0); a bare index is refused (D64).
-3. **How an array value is written: not decided**, so no array can be made yet.
-   *Tests:* `array_type_accepted`, `array_items_not_built`, `array_of_nothing_refused`.
+2. **An array value is bare `[1, 2, 3]` where the kind is already known** (a declaration, a parameter, a field or a
+   result says it's an array), and its items and length must fit that type. **Where nothing says the kind** (`: infer`)
+   it is `array[1, 2, 3]`: Geiger works out the item type, and the length is the number of items. A bare `[…]` there
+   is refused, since nothing is guessed, and `array[…]` where the kind is already known is refused too (D33, D39,
+   D124).
+3. An item is reached by `pos:` (counting from 1) or `offset:` (counting from 0); a bare index is refused (D64). Every
+   index is a check site: it must land on an item. Every item stays within its element type's bounds.
+4. An item changes like a field, `$xs[pos: 2] = 4;`, and only when its holder may change (D30, D58).
+5. `for $x in $xs:` goes through the items front to back (D74). Going through items that are structs, unions or
+   arrays: **not decided**.
+   *Tests:* `array_values_run`, `array_named_where_nothing_says`, `array_bare_needs_its_kind`,
+   `array_kind_not_repeated`, `array_needs_its_length`, `array_item_bounds_checked`, `array_index_needs_its_label`,
+   `array_index_outside`, `array_item_change_bounds_checked`, `array_items_follow_holder`,
+   `array_lent_to_a_function`, `array_inside_a_struct`, `loop_needs_a_collection`, `array_type_accepted`,
+   `array_of_nothing_refused`.
 
 ## 9.5 What isn't decided about whole values
 

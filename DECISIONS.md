@@ -1755,9 +1755,12 @@ open.
 
 ## D112 — `std::print` adds nothing of its own (2026-10-30)
 
-Owner asked CyborgPL's design session (from memory, no docs) how print's commas differ from `concat`: commas give
-print several items to write, each formatted by its own type; `concat` builds a new text value and prints nothing;
-CyborgPL's sore point was that turning a number into text was never settled. Design claude proposed, owner: "yes".
+Owner asked CyborgPL's design session how print's commas differ from `concat`: commas give print several items to
+write, each formatted by its own type; `concat` builds a new text value and prints nothing. (Corrected 2026-10-31,
+after it checked its docs: its first, from-memory answer said turning a number into text was never settled in
+CyborgPL. It was: an explicit, named conversion since 2026-09-19, made explicit after two cold readers were confused by
+an implicit one. Its commas exist so print can render each number in its own form, which a join would already have
+fixed as text.) Design claude proposed, owner: "yes".
 **`std::print` writes its items one after another, with nothing added between them and no line break of its own**;
 a line break is the item `newline`. The `,` between items separates arguments, as in every call (D50).
 
@@ -1929,6 +1932,26 @@ Design claude pointed out that D114's one stderr line predates the layout of D11
 fails while the program runs reports in the same layout as every other message**: `check failed:` and the place twice
 (D117, D119), the line with its pointer, `what:`, `why:`, `when:` with the actual values, and `because:` links (D118,
 D122). The rest of D114 stands: the program stops at once, nothing runs after it, and it exits with a failure status.
+
+## D124 — Array values: `[1, 2, 3]` where the kind is known, `array[…]` only where it isn't (2026-10-31)
+
+Owner asked why `array` was written twice in `var $xs: array[…] = array[1, 2, 3];` (the value's `array` doesn't even
+name the whole type); CyborgPL's design session, checking its docs, said CyborgPL writes bare `[…]` and takes the kind
+from the declaration or parameter, letting its prover choose where nothing says it. Owner: "Why not write it when
+needed, and no when not?"; owner: "yes". **Say it only where it isn't already known:**
+
+```
+var $xs: array[int[min: 0, max: 9], length: 3] = [1, 2, 3];       // the kind is known: bare brackets
+var $xs: infer = array[1, 2, 3];                                   // nothing says the kind: write it
+var $xs: array[int[min: 0, max: 9], length: 3] = array[1, 2, 3];   // refused: `array` is already known
+```
+
+- Where the declaration, a parameter, a field or a result says it's an array, the value is bare `[…]`, and its items
+  and length must fit that type.
+- Where nothing says the kind (`: infer`), the value is `array[…]`; Geiger works out the item type, and the length is
+  the number of items. A bare `[…]` there is refused: nothing is guessed (D33).
+- Writing `array[…]` where the kind is already known is refused, as a spelled-out default is (D39).
+- A later `std::list[…]` value follows the same rule.
 
 ---
 

@@ -19,7 +19,7 @@ Every loop must provably end, except `forever` (D7, D76).
    `from: 5, to: 1` with no negative step, or a step of 0 (D74). Otherwise it is a check site.
 4. The labels are written in their declared order: `from:`, then `to:` or `before:`, then `step_by:`; out of order is
    refused (D54, D113).
-5. `for $r in $readings` goes through a collection (D74); see section 9.
+5. `for $x in $xs` goes through an array, front to back (D74); see section 9.4.
 6. The loop's own value is `var.immut` for each trip: changing it inside the loop is refused (D115).
 
 ```
