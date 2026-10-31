@@ -437,6 +437,11 @@ pub(crate) enum ExpressionKind {
         base: Box<Expression>,
         index: Index,
     },
+    /// A whole value handed to a new holder: `Copy $a`, `Give $r` (D125).
+    Handoff {
+        handoff: Handoff,
+        name: String,
+    },
     Negate(Box<Expression>),
     Not(Box<Expression>),
     Binary {

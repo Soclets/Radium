@@ -1,5 +1,6 @@
 // trace D80
-// expect: not decided at line 14
+// trace D125
+// expect: refused at line 15
 struct reading:
     time: int[min: 0, max: 86_399];
     celsius: int[min: -40, max: 125];

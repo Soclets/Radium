@@ -1,0 +1,21 @@
+// trace D125
+// trace D95
+// expect: runs
+// output: 30
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn warmed [$r: reading] -> reading:
+    var $out: reading = Copy $r;
+    $out.celsius = $out.celsius + 9;
+    return Give $out;
+end fn warmed
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 1, celsius = 21];
+    var $w: reading = warmed(Lend $r);
+    std::print($w.celsius, newline);
+    return void;
+end fn.main

@@ -848,6 +848,11 @@ impl<'program> Machine<'program> {
                 case,
                 fields,
             } => self.build(type_name, case.as_deref(), fields, frame),
+            // trace D125: the hand-off itself is checked before the program runs; here the value is just passed on.
+            ExpressionKind::Handoff { name, .. } => frame
+                .lookup(name)
+                .map(|slot| slot.value.clone())
+                .ok_or_else(|| fault(format!("`${name}` has no slot"))),
             ExpressionKind::Array { items, .. } => {
                 let mut values = Vec::with_capacity(items.len());
                 for item in items {

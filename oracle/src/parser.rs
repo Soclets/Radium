@@ -1705,25 +1705,16 @@ impl Parser {
                 )
                 .fix("`newline`"));
             }
-            "old" => {
-                self.advance();
-                self.expect(
-                    &TokenKind::OpenBracket,
-                    "`[` after `old`",
-                    "`old[$parameter]` describes a starting value, so it uses `[ ]` (D50, D53)",
-                )?;
-                let name = self.take_value_name("a parameter's `$name`")?;
-                self.expect(
-                    &TokenKind::CloseBracket,
-                    "`]` closing `old[…]`",
-                    "`old[$parameter]` (D53)",
-                )?;
-                return Ok(Expression {
-                    place: self.span_from(start),
-                    kind: ExpressionKind::Old(name),
-                });
-            }
+            "old" => return self.old_value(start),
             "result" => ExpressionKind::Result,
+            "Give" | "Copy" | "Lend" | "give" | "copy" | "lend"
+                if matches!(
+                    self.kind_after(1),
+                    Some(TokenKind::ValueName(_) | TokenKind::Dot)
+                ) =>
+            {
+                return self.handoff_value(start, word);
+            }
             "array" if self.kind_after(1) == Some(&TokenKind::OpenBracket) => {
                 return self.named_array(start);
             }
@@ -1871,6 +1862,42 @@ impl Parser {
             place: self.span_from(start),
             from_zero,
             value: Box::new(value),
+        })
+    }
+
+    /// `old[$parameter]`: a parameter's value when the function started (D53).
+    fn old_value(&mut self, start: Place) -> Result<Expression, Problem> {
+        self.advance();
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[` after `old`",
+            "`old[$parameter]` describes a starting value, so it uses `[ ]` (D50, D53)",
+        )?;
+        let name = self.take_value_name("a parameter's `$name`")?;
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing `old[…]`",
+            "`old[$parameter]` (D53)",
+        )?;
+        Ok(Expression {
+            place: self.span_from(start),
+            kind: ExpressionKind::Old(name),
+        })
+    }
+
+    /// `Give $a` or `Copy $a`: a whole value going to a new holder (D125).
+    fn handoff_value(&mut self, start: Place, word: &str) -> Result<Expression, Problem> {
+        let Some(handoff) = self.handoff()? else {
+            return Err(Problem::refused(
+                start,
+                format!("`{word}` can't start a value here"),
+                "a hand-off is `Give`, `Copy`, `Lend` or `Lend.mut` and a value's `$name` (D80, D125)",
+            ));
+        };
+        let name = self.take_value_name("a value's `$name` after the hand-off word")?;
+        Ok(Expression {
+            place: self.span_from(start),
+            kind: ExpressionKind::Handoff { handoff, name },
         })
     }
 

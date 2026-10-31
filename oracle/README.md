@@ -83,15 +83,15 @@ The second slice adds `struct` with fields, building, `.immut` fields and fields
 `union.tagged` and `match` with every case covered (D59, D72); arrays, with `[…]` and `array[…]` values (D124),
 `pos:`/`offset:` items and `for $x in $xs` (D64, D70, D74); and ownership: `Give`, `Copy`,
 `Lend`, `Lend.mut`, bare (lent), `Lent.mut` and `Given` parameters, no use after `Give`, and `must_Give` values handed
-off on every path (D5, D80, D84, D91, D92).
+off on every path (D5, D80, D84, D91, D92), with no hidden ownership: `=`, `return`, fields and items take `Give` or
+`Copy` (D125).
 
 **Not built yet:** `std::list` and the maps, failures and `otherwise`, function collections, generics, `decreases` on functions, `Lend from`, hex numbers.
 
 **Not decided, so reported:** parameters for `fn.main`, and anything it gives back but `void` (D101); a bare `int`;
 text types (`string`); shadowing; `fails … exactly when`; shields; `invariant`/`assert` spellings; a way to throw a
-result away on purpose (D97); building a struct without every field; using a whole
-struct, union or array outside a call's ownership word (`=`, `return`, `equal`, printing); passing one with no
-ownership word; pulling a struct out of a `case`; going through items that are structs, unions or arrays; how a `must_Give` value's duty ends in the function that receives
+result away on purpose (D97); building a struct without every field; comparing or printing a whole struct, union or
+array; storing a borrow with `Lend` in a name, result, field or item (D49, D125); pulling a struct out of a `case`; going through items that are structs, unions or arrays; how a `must_Give` value's duty ends in the function that receives
 it; a `const` struct.
 
 ## Provisional readings

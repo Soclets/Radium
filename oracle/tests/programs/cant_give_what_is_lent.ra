@@ -1,0 +1,20 @@
+// trace D125
+// trace D91
+// expect: refused at line 14
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn keep [$r: Given reading] -> void:
+    return void;
+end fn keep
+
+fn pass_on [$r: reading] -> void:
+    keep(Give $r); // here
+    return void;
+end fn pass_on
+
+fn.main [] -> void:
+    return void;
+end fn.main

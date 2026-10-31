@@ -694,6 +694,9 @@ impl<'program> Checker<'program> {
                 }
                 Ok(())
             }
+            (ExpressionKind::Handoff { handoff, name }, _) => {
+                self.hand_off(value.place, *handoff, name, wanted, because)
+            }
             _ => {
                 let kind = self.expression(value, context)?;
                 if &kind == wanted {
@@ -709,6 +712,60 @@ impl<'program> Checker<'program> {
                     "a value goes only where its own type is held (D30, D58, D70)",
                 );
                 Err(with_because(problem, because))
+            }
+        }
+    }
+
+    /// `Give $x` or `Copy $x` going into a name, a result, a field or an item (D125).
+    fn hand_off(
+        &mut self,
+        place: Place,
+        handoff: Handoff,
+        name: &str,
+        wanted: &ValueKind,
+        because: Option<(Place, String)>,
+    ) -> Result<(), Problem> {
+        let Some(known) = self.lookup(name).cloned() else {
+            return Err(undeclared(place, name));
+        };
+        refuse_given(place, name, &known)?;
+        if known.kind.is_copied() {
+            return Err(Problem::refused(
+                place,
+                format!("`{}` on a value that is always copied", handoff.word()),
+                "integers and `bool` are always copied, so they take no ownership word (D92)",
+            ));
+        }
+        if &known.kind != wanted {
+            let problem = Problem::refused(
+                place,
+                format!(
+                    "this is {}, but it goes into {}",
+                    known.kind.describe(),
+                    wanted.describe()
+                ),
+                "a value goes only where its own type is held (D30, D58, D70)",
+            );
+            return Err(with_because(problem, because));
+        }
+        match handoff {
+            Handoff::Lend | Handoff::LendMut => Err(Problem::not_decided(
+                place,
+                "storing a borrow in a name, a result, a field or an item, which needs lifetimes (D49, D125)",
+            )),
+            Handoff::Copy if self.types.is_must_give(&known.kind) => Err(Problem::refused(
+                place,
+                format!("`${name}` can't be copied"),
+                "a `must_Give` value is handed off exactly once, so there is never a second one (D84)",
+            )
+            .because(known.place, format!("`${name}` is declared here"))),
+            Handoff::Copy => Ok(()),
+            Handoff::Give => {
+                refuse_giving_what_is_lent(place, name, &known)?;
+                if let Some(known) = self.lookup_mut(name) {
+                    known.given = Some(Given::Yes(place));
+                }
+                Ok(())
             }
         }
     }
@@ -1139,10 +1196,16 @@ impl Checker<'_> {
             return refuse_mismatch(argument, &kind, &wanted, declared);
         }
         let Some(handoff) = argument.handoff else {
-            return Err(Problem::not_decided(
+            // trace D125: a fresh value has no holder yet, so handing it over needs no word.
+            if is_fresh(&argument.value) {
+                return self.value_into(&argument.value, &wanted, context, Some(declared));
+            }
+            return Err(Problem::refused(
                 argument.value.place,
-                "passing a struct, union or array without `Give`, `Copy`, `Lend` or `Lend.mut`",
-            ));
+                "this whole value is handed over with no word",
+                "every hand-off of a value that isn't copied is written: `Give`, `Copy`, `Lend` or `Lend.mut` (D125)",
+            )
+            .because(declared.0, declared.1));
         };
         let ExpressionKind::Value(name) = &argument.value.kind else {
             return Err(Problem::not_decided(
@@ -1191,6 +1254,7 @@ impl Checker<'_> {
                 }
             }
             Handoff::Give => {
+                refuse_giving_what_is_lent(argument.place, name, &known)?;
                 if let Some(known) = self.lookup_mut(name) {
                     known.given = Some(Given::Yes(argument.place));
                 }
@@ -1270,6 +1334,33 @@ fn refuse_pairing(
         None => problem,
     };
     Err(problem.because(declared.0, declared.1))
+}
+
+/// Refuses giving away a value that is only lent here (D80, D91).
+fn refuse_giving_what_is_lent(place: Place, name: &str, known: &Known) -> Result<(), Problem> {
+    if matches!(
+        known.role,
+        Role::Parameter {
+            holding: Holding::Lent | Holding::LentMut,
+            ..
+        }
+    ) {
+        return Err(Problem::refused(
+            place,
+            format!("`${name}` is only lent here, so it can't be given away"),
+            "`Give` hands off what is owned; a lent value can be copied, not given (D80, D91, D125)",
+        )
+        .because(known.place, format!("`${name}` is a lent parameter")));
+    }
+    Ok(())
+}
+
+/// A value just built, with no holder yet (D125).
+fn is_fresh(expression: &Expression) -> bool {
+    matches!(
+        expression.kind,
+        ExpressionKind::Build { .. } | ExpressionKind::Array { .. } | ExpressionKind::Call(_)
+    )
 }
 
 /// Refuses using a value after it was handed off with `Give` (D80).
@@ -1364,11 +1455,10 @@ impl Checker<'_> {
             ExpressionKind::Value(name) => {
                 let kind = self.place_kind(expression, context)?;
                 if !kind.is_copied() {
-                    return Err(Problem::not_decided(
+                    return Err(Problem::refused(
                         place,
-                        format!(
-                            "using a whole `${name}` here, without `Give`, `Copy` or `Lend` in a call"
-                        ),
+                        format!("this whole `${name}` goes to a new holder with no word"),
+                        "every hand-off of a value that isn't copied is written; `=`, `return`, fields and items take `Give` or `Copy` (D125)",
                     ));
                 }
                 Ok(kind)
@@ -1409,6 +1499,11 @@ impl Checker<'_> {
                 let base_kind = self.place_kind(base, context)?;
                 self.item_kind(&base_kind, index)
             }
+            ExpressionKind::Handoff { handoff, .. } => Err(Problem::refused(
+                place,
+                format!("`{}` in the middle of a value", handoff.word()),
+                "a hand-off word goes in front of a whole value going to a new holder: a call, `=`, `return`, a field or an item (D125)",
+            )),
             ExpressionKind::Negate(inner) => self.operands(
                 place,
                 context,
@@ -1704,7 +1799,8 @@ impl Checker<'_> {
             | ExpressionKind::Build { .. }
             | ExpressionKind::Field { .. }
             | ExpressionKind::Array { .. }
-            | ExpressionKind::Item { .. } => false,
+            | ExpressionKind::Item { .. }
+            | ExpressionKind::Handoff { .. } => false,
         }
     }
 
