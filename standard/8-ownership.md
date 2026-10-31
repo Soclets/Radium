@@ -20,12 +20,26 @@ The ownership words start with a capital, so every hand-off stands out; lowercas
    off, inside a loop, a value declared outside it, since a later trip would hand it off again (provisional).
 3. **`Lend.mut` lends a value that may change**, and what the function changes comes back to the lender (D80). While
    it is lent, nothing else in the same call uses it (D5).
-4. Passing a struct, union or array with no word: **not decided**.
+4. **No hidden ownership** (D125): every hand-off of a value that isn't copied is written, so passing a struct, union
+   or array by its `$name` with no word is refused. A value just built (`reading[…]`, `[1, 2, 3]`) has no holder yet
+   and needs no word.
+5. **`Give` hands off only what is owned**: a bare or `Lent.mut` parameter can be copied, but not given (D125).
    *Tests:* `ownership_words_are_capitalised`, `lend_a_struct`, `lend_mut_changes_the_lender`, `give_a_struct`,
-   `given_value_is_gone`, `copy_keeps_the_original`, `call_word_matches_parameter`, `struct_needs_a_call_word_open`,
+   `given_value_is_gone`, `copy_keeps_the_original`, `call_word_matches_parameter`, `struct_needs_a_call_word`,
+   `fresh_value_needs_no_word`, `cant_give_what_is_lent`,
    `lend_mut_needs_a_changeable_value`, `given_on_one_path`, `give_inside_a_loop`, `lend_mut_used_twice_in_a_call`.
 
-## 8.2 In a parameter
+## 8.2 Into a name, a result, a field or an item
+
+1. `=`, `return`, a field and an item take `Give` or `Copy` too (D125): `var $b: reading = Copy $a;`,
+   `return Give $out;`, `week[rain = Give $xs]`. A whole value there with no word is refused.
+2. `Lend` or `Lend.mut` there would store a borrow, which needs lifetimes (D49): **not decided**.
+3. A hand-off word goes only in front of a whole value going to a new holder; `1 + Copy $a` is refused.
+   *Tests:* `copy_into_a_name`, `give_into_a_name`, `return_gives_a_struct`, `give_into_a_field`,
+   `struct_whole_value_needs_a_word`, `lend_into_a_name_open`, `copied_values_take_no_word`,
+   `handoff_inside_a_value`.
+
+## 8.3 In a parameter
 
 1. A parameter says how the function holds the value (D91): `Lent.mut` (may change it; the caller keeps it) or
    `Given` (the function owns it from then on).
@@ -39,7 +53,7 @@ fn add_row [$t: Lent.mut transaction, …] -> void:
 fn close [$f: Given open_file] -> void:
 ```
 
-## 8.3 Values that must be given
+## 8.4 Values that must be given
 
 1. A type narrowed with `must_Give` must be handed off with `Give` **exactly once** before it goes out of scope (D5,
    D84). Lending doesn't count; forgetting it, giving it twice, or copying it is refused. Giving it to a function

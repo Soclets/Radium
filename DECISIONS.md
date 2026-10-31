@@ -1953,6 +1953,32 @@ var $xs: array[int[min: 0, max: 9], length: 3] = array[1, 2, 3];   // refused: `
 - Writing `array[…]` where the kind is already known is refused, as a spelled-out default is (D39).
 - A later `std::list[…]` value follows the same rule.
 
+## D125 — No hidden ownership (2026-10-31)
+
+Owner asked whether to add a "no hidden ownership" rule; design claude proposed the wording, owner: "yes". **Whenever
+a value that isn't copied automatically goes to another holder, the hand-off is written**: `Give`, `Copy`, `Lend` or
+`Lend.mut` (D80, D84). The holders are a parameter, another name (`=`), a `return`, a field and an item. Values that
+are always copied (integers, `bool`) take no word (D92).
+
+```
+show(Lend $r);
+var $b: reading = Copy $a;
+return Give $r;
+var $w: week = week[rain = Give $xs];
+```
+
+**Reading in place is not a hand-off** and takes no word: `$r.celsius`, `$xs[pos: 1]`, `match $s:`, `for $x in $xs:`.
+The holder keeps the value; nothing else comes to hold it. A fresh value just built (`reading[…]`, `[1, 2, 3]`) has no
+holder yet, so it isn't a hand-off either.
+
+Owner asked whether parameters should also write their word; design claude: a bare parameter has one meaning (lent,
+D92) and the call writes `Lend` anyway, so a written `Lent` would only repeat it. **D92 stands.**
+
+Proposed by design claude, owner: "yes": **`=`, `return`, fields and items take `Give` or `Copy`**. **`Lend` or
+`Lend.mut` there would store a borrow**, which needs lifetimes (D49), so it is **not decided** until lifetimes are
+designed. A whole value with no word in those places is refused. `Give` hands off only what is owned: a value that is
+only lent (a bare or `Lent.mut` parameter) can be copied but not given.
+
 ---
 
 ## Open

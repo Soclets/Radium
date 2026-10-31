@@ -72,9 +72,8 @@
    `array_lent_to_a_function`, `array_inside_a_struct`, `loop_needs_a_collection`, `array_type_accepted`,
    `array_of_nothing_refused`.
 
-## 9.5 What isn't decided about whole values
+## 9.5 Whole values
 
-Using a whole struct, union or array except to read a field, to `match` it, or to hand it to a call with `Give`,
-`Copy`, `Lend` or `Lend.mut` (section 8): **not decided**. That covers `var $b: reading = $a;`, `return $r;`,
-`$a equal $b` and printing one.
-*Tests:* `struct_whole_copy_open`, `struct_equal_open`, `struct_print_open`.
+A whole struct, union or array goes to a new holder only with a hand-off word (section 8.2, D125). Comparing two with
+`equal`, and printing one: **not decided**.
+*Tests:* `struct_whole_value_needs_a_word`, `struct_equal_open`, `struct_print_open`.
