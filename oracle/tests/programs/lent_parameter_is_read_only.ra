@@ -1,0 +1,16 @@
+// trace D92
+// trace D31
+// expect: refused at line 10
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn warm [$r: reading] -> void:
+    $r.celsius = 1; // here
+    return void;
+end fn warm
+
+fn.main [] -> void:
+    return void;
+end fn.main

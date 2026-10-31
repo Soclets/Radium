@@ -1,0 +1,9 @@
+// trace D59
+// expect: refused at line 3
+union raw: // here
+    ok;
+end union raw
+
+fn.main [] -> void:
+    return void;
+end fn.main

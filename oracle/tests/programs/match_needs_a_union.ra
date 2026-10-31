@@ -1,0 +1,10 @@
+// trace D72
+// expect: refused at line 5
+fn.main [] -> void:
+    var $n: int[min: 0, max: 9] = 3;
+    match $n: // here
+        case status.ok:
+            std::print("a", newline);
+    end match
+    return void;
+end fn.main

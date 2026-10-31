@@ -13,6 +13,7 @@ mod lexer;
 mod outcome;
 mod parser;
 mod rules;
+mod types;
 
 pub use crate::outcome::{Kind, Link, Message, Outcome, Place};
 

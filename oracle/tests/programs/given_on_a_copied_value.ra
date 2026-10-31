@@ -1,0 +1,9 @@
+// trace D92
+// expect: refused at line 3
+fn keep [$n: Given int[min: 0, max: 9]] -> void: // here
+    return void;
+end fn keep
+
+fn.main [] -> void:
+    return void;
+end fn.main

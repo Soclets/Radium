@@ -1,0 +1,13 @@
+// trace D58
+// expect: refused at line 11
+struct tag:
+    id.immut: int[min: 0, max: 99];
+    count: int[min: 0, max: 99];
+end struct tag
+
+fn.main [] -> void:
+    var $t: tag = tag[id = 7, count = 0];
+    $t.count = 1;
+    $t.id = 8; // here
+    return void;
+end fn.main

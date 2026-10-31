@@ -1,0 +1,19 @@
+// trace D80
+// trace D91
+// expect: runs
+// output: kept 3600
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn keep [$r: Given reading] -> void:
+    std::print("kept ", $r.time, newline);
+    return void;
+end fn keep
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 3600, celsius = 21];
+    keep(Give $r);
+    return void;
+end fn.main

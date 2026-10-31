@@ -5,9 +5,11 @@
 use std::collections::HashMap;
 
 use crate::ast::{
-    Bounds, Call, CallTarget, Expression, ExpressionKind, Function, LoopRange, Operator, Program,
-    RangeEnd, RemainderRule, Rounding, Statement, StatementKind, TypeSpec,
+    Bounds, Call, CallTarget, Expression, ExpressionKind, Field, FieldValue, Function, Handoff,
+    LoopRange, MatchCase, Operator, Program, RangeEnd, RemainderRule, Rounding, Statement,
+    StatementKind, Target, TypeSpec,
 };
+use crate::types::Types;
 use num_bigint::{BigInt, Sign};
 
 use crate::binding::{Binding, bind_arguments};
@@ -37,7 +39,12 @@ impl From<Problem> for Stop {
 
 /// Runs `fn.main` (D101), returning how it ended and everything printed.
 pub(crate) fn run(program: &Program) -> (Result<(), Stop>, String) {
+    let types = match Types::new(program) {
+        Ok(types) => types,
+        Err(problem) => return (Err(fault(problem.what())), String::new()),
+    };
     let mut machine = Machine {
+        types,
         functions: program
             .functions
             .iter()
@@ -47,13 +54,13 @@ pub(crate) fn run(program: &Program) -> (Result<(), Stop>, String) {
         steps: 0,
         depth: 0,
     };
-    let frame = Frame {
+    let mut frame = Frame {
         scopes: vec![HashMap::new()],
         old: HashMap::new(),
         result: None,
     };
     let result = machine
-        .invoke(&program.main, frame, program.main.place)
+        .invoke(&program.main, &mut frame, program.main.place)
         .map(|_| ());
     (result, machine.output)
 }
@@ -63,6 +70,17 @@ enum Value {
     /// Any size, so the oracle never runs out of digits before Radium does (D104).
     Integer(BigInt),
     Bool(bool),
+    /// A struct's fields, in their declared order (D58).
+    Struct {
+        type_name: String,
+        fields: Vec<(String, Value)>,
+    },
+    /// One case of a union, with its data (D59).
+    Union {
+        type_name: String,
+        case: String,
+        fields: Vec<(String, Value)>,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -111,6 +129,7 @@ impl Frame {
 }
 
 struct Machine<'program> {
+    types: Types<'program>,
     functions: HashMap<&'program str, &'program Function>,
     output: String,
     steps: u64,
@@ -181,17 +200,14 @@ impl<'program> Machine<'program> {
                 Ok(Flow::Normal)
             }
             StatementKind::Assign {
-                name,
+                target,
                 value: expression,
             } => {
                 let value = self.evaluate(expression, frame)?;
-                let slot = frame
-                    .lookup_mut(name)
-                    .ok_or_else(|| fault(format!("`${name}` has no slot")))?;
-                check_bounds(expression.place, name, &value, slot)?;
-                slot.value = value;
+                self.assign(target, expression.place, value, frame)?;
                 Ok(Flow::Normal)
             }
+            StatementKind::Match { subject, cases } => self.match_statement(subject, cases, frame),
             StatementKind::Call(call) => {
                 self.call(call, frame)?;
                 Ok(Flow::Normal)
@@ -351,7 +367,8 @@ impl<'program> Machine<'program> {
             .get(name.as_str())
             .ok_or_else(|| fault(format!("no function `{name}`")))?;
         let bindings = bind_arguments(function, call).map_err(|problem| fault(problem.what()))?;
-        // trace D55: arguments are evaluated left to right, as written.
+        // trace D55: arguments are evaluated left to right, as written. `Give`, `Copy` and `Lend` all hand the
+        // function its own copy here; the checker has already made sure nothing uses a given value again.
         let mut argument_values = Vec::with_capacity(call.arguments.len());
         for argument in &call.arguments {
             argument_values.push(self.evaluate(&argument.value, frame)?);
@@ -393,19 +410,47 @@ impl<'program> Machine<'program> {
                 .insert(parameter.name.clone(), slot.value.clone());
             callee.declare(&parameter.name, slot);
         }
-        self.invoke(function, callee, call.place)
+        let result = self.invoke(function, &mut callee, call.place)?;
+        // trace D80: what a `Lend.mut` lent comes back changed, to the value that lent it.
+        for (parameter, binding) in function
+            .parameters
+            .iter()
+            .zip(bindings_again(function, call)?)
+        {
+            let Binding::Argument(index) = binding else {
+                continue;
+            };
+            let Some(argument) = call.arguments.get(index) else {
+                continue;
+            };
+            if argument.handoff != Some(Handoff::LendMut) {
+                continue;
+            }
+            let ExpressionKind::Value(name) = &argument.value.kind else {
+                continue;
+            };
+            let changed = callee
+                .lookup(&parameter.name)
+                .map(|slot| slot.value.clone())
+                .ok_or_else(|| fault("a lent parameter went missing"))?;
+            let slot = frame
+                .lookup_mut(name)
+                .ok_or_else(|| fault(format!("`${name}` has no slot")))?;
+            slot.value = changed;
+        }
+        Ok(result)
     }
 
     /// Runs a function whose parameters are already in `callee`: `requires`, the body, the result, `ensures`.
     fn invoke(
         &mut self,
         function: &'program Function,
-        mut callee: Frame,
+        callee: &mut Frame,
         call_place: Place,
     ) -> Result<Option<Value>, Stop> {
         let name = &function.name;
         for condition in &function.requires {
-            if !self.truth(condition, &mut callee)? {
+            if !self.truth(condition, callee)? {
                 return Err(Problem::check_failed(
                     call_place,
                     format!("this call doesn't meet `{name}`'s `requires`"),
@@ -423,7 +468,7 @@ impl<'program> Machine<'program> {
             )
             .into());
         }
-        let flow = self.block(&function.body, &mut callee);
+        let flow = self.block(&function.body, callee);
         self.depth = self.depth.saturating_sub(1);
         match (flow?, function.result.as_ref()) {
             (Flow::Return(Some(value), place), Some(result)) => {
@@ -456,7 +501,7 @@ impl<'program> Machine<'program> {
             (Flow::Break(_), _) => return Err(fault("a `break` escaped a function")),
         }
         for condition in &function.ensures {
-            if !self.truth(condition, &mut callee)? {
+            if !self.truth(condition, callee)? {
                 let mut problem = Problem::check_failed(
                     condition.place,
                     format!("`{name}` doesn't keep this `ensures`"),
@@ -468,7 +513,140 @@ impl<'program> Machine<'program> {
                 return Err(problem.into());
             }
         }
-        Ok(callee.result)
+        Ok(callee.result.clone())
+    }
+
+    /// Builds a struct, or one case of a union, checking each field's bounds (D58, D59).
+    fn build(
+        &mut self,
+        type_name: &str,
+        case: Option<&str>,
+        values: &'program [FieldValue],
+        frame: &mut Frame,
+    ) -> Result<Value, Stop> {
+        let declared: &[Field] = match case {
+            None => {
+                &self
+                    .types
+                    .structure(type_name)
+                    .ok_or_else(|| fault(format!("no struct `{type_name}`")))?
+                    .fields
+            }
+            Some(case_name) => {
+                &self
+                    .types
+                    .case(type_name, case_name)
+                    .ok_or_else(|| fault(format!("no case `{type_name}.{case_name}`")))?
+                    .fields
+            }
+        };
+        // trace D55: field values are evaluated left to right, as written.
+        let mut written = Vec::with_capacity(values.len());
+        for value in values {
+            written.push((value, self.evaluate(&value.value, frame)?));
+        }
+        let mut fields = Vec::with_capacity(declared.len());
+        for field in declared {
+            let (value, found) = written
+                .iter()
+                .find(|(value, _)| value.name == field.name)
+                .ok_or_else(|| fault(format!("field `{}` wasn't set", field.name)))?;
+            check_field_bounds(value.value.place, field, found)?;
+            fields.push((field.name.clone(), found.clone()));
+        }
+        Ok(match case {
+            None => Value::Struct {
+                type_name: type_name.to_owned(),
+                fields,
+            },
+            Some(case_name) => Value::Union {
+                type_name: type_name.to_owned(),
+                case: case_name.to_owned(),
+                fields,
+            },
+        })
+    }
+
+    /// Sets a value, or a field inside it, checking bounds on the way (D14, D41, D58).
+    fn assign(
+        &mut self,
+        target: &Target,
+        place: Place,
+        value: Value,
+        frame: &mut Frame,
+    ) -> Result<(), Stop> {
+        let name = &target.name;
+        let slot = frame
+            .lookup_mut(name)
+            .ok_or_else(|| fault(format!("`${name}` has no slot")))?;
+        if target.fields.is_empty() {
+            check_bounds(place, name, &value, slot)?;
+            slot.value = value;
+            return Ok(());
+        }
+        let mut current = &mut slot.value;
+        for field_name in &target.fields {
+            let Value::Struct { type_name, fields } = current else {
+                return Err(fault("a field set on something that isn't a struct"));
+            };
+            let declared = self
+                .types
+                .structure(type_name)
+                .and_then(|definition| {
+                    definition
+                        .fields
+                        .iter()
+                        .find(|field| &field.name == field_name)
+                })
+                .ok_or_else(|| fault(format!("no field `{field_name}`")))?;
+            let (_, inner) = fields
+                .iter_mut()
+                .find(|(field, _)| field == field_name)
+                .ok_or_else(|| fault(format!("no field `{field_name}`")))?;
+            if Some(field_name) == target.fields.last() {
+                check_field_bounds(place, declared, &value)?;
+                *inner = value;
+                return Ok(());
+            }
+            current = inner;
+        }
+        Err(fault("an assignment went nowhere"))
+    }
+
+    /// Runs the one `case` that matches (D72).
+    fn match_statement(
+        &mut self,
+        subject: &'program Expression,
+        cases: &'program [MatchCase],
+        frame: &mut Frame,
+    ) -> Result<Flow, Stop> {
+        let Value::Union { case, fields, .. } = self.evaluate(subject, frame)? else {
+            return Err(fault("`match` on something that isn't a union"));
+        };
+        let chosen = cases
+            .iter()
+            .find(|candidate| candidate.case_name == case)
+            .ok_or_else(|| fault(format!("no `case` for `{case}`")))?;
+        let mut scope = HashMap::new();
+        for binding in &chosen.bindings {
+            let value = fields
+                .iter()
+                .find(|(field, _)| field == &binding.field)
+                .map(|(_, value)| value.clone())
+                .ok_or_else(|| fault(format!("no field `{}`", binding.field)))?;
+            scope.insert(
+                binding.name.clone(),
+                Slot {
+                    value,
+                    bounds: None,
+                    declared: binding.place,
+                },
+            );
+        }
+        frame.scopes.push(scope);
+        let flow = self.block(&chosen.body, frame);
+        frame.scopes.pop();
+        flow
     }
 
     fn print(&mut self, call: &'program Call, frame: &mut Frame) -> Result<(), Stop> {
@@ -477,9 +655,11 @@ impl<'program> Machine<'program> {
                 ExpressionKind::Text(text) => self.output.push_str(text),
                 ExpressionKind::Newline => self.output.push('\n'),
                 _ => match self.evaluate(&argument.value, frame)? {
-                    Value::Integer(number) => self.output.push_str(&number.to_string()),
-                    Value::Bool(truth) => {
-                        self.output.push_str(if truth { "true" } else { "false" });
+                    value @ (Value::Integer(_) | Value::Bool(_)) => {
+                        self.output.push_str(&show(&value));
+                    }
+                    Value::Struct { .. } | Value::Union { .. } => {
+                        return Err(fault("a struct or union reached `std::print`"));
                     }
                 },
             }
@@ -490,7 +670,9 @@ impl<'program> Machine<'program> {
     fn truth(&mut self, expression: &'program Expression, frame: &mut Frame) -> Result<bool, Stop> {
         match self.evaluate(expression, frame)? {
             Value::Bool(truth) => Ok(truth),
-            Value::Integer(_) => Err(fault("an integer where the checker promised a `bool`")),
+            Value::Integer(_) | Value::Struct { .. } | Value::Union { .. } => Err(fault(
+                "something other than a `bool` where the checker promised one",
+            )),
         }
     }
 
@@ -501,7 +683,9 @@ impl<'program> Machine<'program> {
     ) -> Result<BigInt, Stop> {
         match self.evaluate(expression, frame)? {
             Value::Integer(number) => Ok(number),
-            Value::Bool(_) => Err(fault("a `bool` where the checker promised an integer")),
+            Value::Bool(_) | Value::Struct { .. } | Value::Union { .. } => Err(fault(
+                "something other than an integer where the checker promised one",
+            )),
         }
     }
 
@@ -535,6 +719,19 @@ impl<'program> Machine<'program> {
                 .ok_or_else(|| fault("a call used as a value gave nothing back")),
             ExpressionKind::Negate(inner) => Ok(Value::Integer(-self.integer(inner, frame)?)),
             ExpressionKind::Not(inner) => Ok(Value::Bool(!self.truth(inner, frame)?)),
+            ExpressionKind::Build {
+                type_name,
+                case,
+                fields,
+            } => self.build(type_name, case.as_deref(), fields, frame),
+            ExpressionKind::Field { base, name } => match self.evaluate(base, frame)? {
+                Value::Struct { fields, .. } => fields
+                    .into_iter()
+                    .find(|(field, _)| field == name)
+                    .map(|(_, value)| value)
+                    .ok_or_else(|| fault(format!("no field `{name}`"))),
+                _ => Err(fault("a field read from something that isn't a struct")),
+            },
             ExpressionKind::Binary {
                 operator,
                 left,
@@ -605,7 +802,39 @@ fn show(value: &Value) -> String {
     match value {
         Value::Integer(number) => number.to_string(),
         Value::Bool(truth) => truth.to_string(),
+        Value::Struct { type_name, .. } => format!("a `{type_name}`"),
+        Value::Union {
+            type_name, case, ..
+        } => format!("`{type_name}.{case}`"),
     }
+}
+
+/// Matches a call's arguments again, after the call, to find what was lent to change.
+fn bindings_again(function: &Function, call: &Call) -> Result<Vec<Binding>, Stop> {
+    bind_arguments(function, call).map_err(|problem| fault(problem.what()))
+}
+
+/// Checks a value against a field's bounds (D14, D58).
+fn check_field_bounds(place: Place, field: &Field, value: &Value) -> Result<(), Stop> {
+    if let (Value::Integer(number), Some(bounds)) = (value, field.type_spec.bounds())
+        && (*number < bounds.min || *number > bounds.max)
+    {
+        return Err(Problem::check_failed(
+            place,
+            format!(
+                "`{}` holds int[min: {}, max: {}], and this value doesn't fit",
+                field.name, bounds.min, bounds.max
+            ),
+            "every value stays within its bounds, fields too (D14, D58)",
+        )
+        .when(format!("it would be {number}"))
+        .because(
+            field.place,
+            format!("`{}`'s bounds are set here", field.name),
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn arithmetic(

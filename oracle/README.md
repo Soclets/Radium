@@ -68,7 +68,7 @@ end fn.main
 - `// output: <text>`: one per printed line, in order.
 - `// here` marks the line a verdict points at, for readers.
 
-## What the first slice runs (D93)
+## What it runs
 
 `fn.main` (D101), blocks and `end` (D13), `;` (D29), comments (D86, D87), `var`/`var.immut`/`var.mut`/`const`, `$`, and a type or `: infer` on every value (D30, D31, D108),
 `int[min: …, max: …]` up to 64 bits, `int.wide[…]` beyond, and `int.signed.N_bit[…]` / `int.unsigned.N_bit[…]` at
@@ -77,13 +77,22 @@ comparisons, `and`/`or`/`not` (D34–D40), `if` (D71), `for … in range[…]`, 
 named loops (D73–D77), `fn`/`fn.pure`, labels, defaults, `requires`, `ensures`, `old[…]` (D51–D54), `-> void` and `return void;`
 (D98–D100), `return` and `result`, with calls inside values (D95), every path ending in `return` (D96, D102), results
 never ignored (D97), `my.` on clashes
-(D43), ownership words where they apply to integers (D84, D91, D92), and `std::print`.
+(D43), and `std::print`.
 
-**Not built yet:** `struct`, `union.tagged`, `match`, `array`, going through collections, failures and `otherwise`, `decreases` on functions, hex numbers.
+The second slice adds `struct` with fields, building, `.immut` fields and fields that follow their holder (D58);
+`union.tagged` and `match` with every case covered (D59, D72); `array` types (D70); and ownership: `Give`, `Copy`,
+`Lend`, `Lend.mut`, bare (lent), `Lent.mut` and `Given` parameters, no use after `Give`, and `must_Give` values handed
+off on every path (D5, D80, D84, D91, D92).
+
+**Not built yet:** reaching `array` items, `std::list` and the maps, going through collections, failures and
+`otherwise`, function collections, generics, `decreases` on functions, `Lend from`, hex numbers.
 
 **Not decided, so reported:** parameters for `fn.main`, and anything it gives back but `void` (D101); a bare `int`;
 text types (`string`); shadowing; `fails … exactly when`; shields; `invariant`/`assert` spellings; a way to throw a
-result away on purpose (D97).
+result away on purpose (D97); how an `array` value is written; building a struct without every field; using a whole
+struct, union or array outside a call's ownership word (`=`, `return`, `equal`, printing); passing one with no
+ownership word; pulling a struct out of a `case`; how a `must_Give` value's duty ends in the function that receives
+it; a `const` struct.
 
 ## Provisional readings
 
@@ -101,3 +110,10 @@ The oracle had to read these one way to run at all. None is a decision; each wai
 7. ~~What a failed check does~~: decided, D114. The oracle stops and reports `check fails at line N`, the same as a
    mode 1 or 2 program would.
 8. ~~Changing a loop's own value~~: decided, D115.
+9. **Fields may be written in any order** when building a struct or a case.
+10. **`$r.field = value;` changes one field**, reading D41 (`=` sets a value) with D26 (`.` narrows).
+11. **A value declared outside a loop can't be handed off with `Give` inside it**, since a later trip would hand it
+    off again, even if the trip that gives it then leaves the loop.
+12. **A value pulled out by `case` doesn't change.**
+13. **`Lend.mut` hands the function a copy and takes the changed copy back** when the call ends. With nothing else
+    allowed to use the value meanwhile (D5), that behaves the same as lending the value itself.

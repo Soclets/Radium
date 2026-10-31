@@ -1,0 +1,9 @@
+// trace D70
+// expect: refused at line 3
+fn first [$readings: array[int[min: 0, max: 255], length: 0]] -> void: // here
+    return void;
+end fn first
+
+fn.main [] -> void:
+    return void;
+end fn.main

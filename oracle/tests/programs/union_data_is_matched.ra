@@ -1,0 +1,14 @@
+// trace D59
+// trace D72
+// expect: refused at line 12
+union.tagged status:
+    ok;
+    warming_up;
+    failed[code: int[min: 1, max: 255]];
+end union.tagged status
+
+fn.main [] -> void:
+    var $s: status = status.failed[code = 3];
+    std::print($s.code, newline); // here
+    return void;
+end fn.main

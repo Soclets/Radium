@@ -5,12 +5,14 @@
 use num_bigint::{BigInt, Sign};
 
 use crate::ast::{
-    Argument, Bounds, Branch, Call, CallTarget, Changeability, Expression, ExpressionKind,
-    Function, Holder, LabelEntry, Labels, LoopRange, Operator, Parameter, ParameterDefault,
-    Program, RangeEnd, RemainderRule, Rounding, Statement, StatementKind, TypeSpec,
+    Argument, Bounds, Branch, Call, CallTarget, Case, CaseBinding, Changeability, Expression,
+    ExpressionKind, Field, FieldValue, Function, Handoff, Holder, Holding, LabelEntry, Labels,
+    LoopRange, MatchCase, Operator, Parameter, ParameterDefault, Program, RangeEnd, RemainderRule,
+    Rounding, Statement, StatementKind, StructDefinition, Target, TypeSpec, UnionDefinition,
 };
 use crate::lexer::{Token, TokenKind, describe};
 use crate::outcome::{Place, Problem};
+use crate::rules::is_radium_word;
 
 /// Builds a whole program from its tokens.
 pub(crate) fn parse(tokens: Vec<Token>) -> Result<Program, Problem> {
@@ -176,9 +178,15 @@ impl Parser {
 impl Parser {
     fn program(&mut self) -> Result<Program, Problem> {
         let mut functions = Vec::new();
+        let mut structs = Vec::new();
+        let mut unions = Vec::new();
         let mut main: Option<Function> = None;
         while self.current().is_some() {
-            if self.at_word("fn") {
+            if self.at_word("struct") {
+                structs.push(self.struct_definition()?);
+            } else if self.at_word("union") {
+                unions.push(self.union_definition()?);
+            } else if self.at_word("fn") {
                 let function = self.function()?;
                 if !function.is_main {
                     functions.push(function);
@@ -199,16 +207,11 @@ impl Parser {
                     "the program starts at `fn.main`, a function nothing may call (D101)",
                 )
                 .fix("`fn.main [] -> void:` … `end fn.main`"));
-            } else if self.at_word("struct") || self.at_word("union") {
-                return Err(Problem::not_built(
-                    self.place(),
-                    "`struct` and `union.tagged` (the oracle's second slice)",
-                ));
             } else {
                 return Err(Problem::refused(
                     self.place(),
                     format!("{} can't start a top-level item", self.found()),
-                    "the top level holds functions; the oracle reads `fn` here (D51, D101)",
+                    "the top level holds functions and types: `fn`, `struct`, `union.tagged` (D51, D58, D59)",
                 ));
             }
         }
@@ -219,7 +222,12 @@ impl Parser {
                 "a program starts at its one `fn.main [] -> void:` … `end fn.main` (D101)",
             )
         })?;
-        Ok(Program { functions, main })
+        Ok(Program {
+            structs,
+            unions,
+            functions,
+            main,
+        })
     }
 
     /// Reads `end fn.main` (D101).
@@ -284,7 +292,7 @@ impl Parser {
     /// Reads statements up to the `end` or `else` that closes the block.
     fn statements(&mut self, opener: Place) -> Result<Vec<Statement>, Problem> {
         let mut statements = Vec::new();
-        while !self.at_word("end") && !self.at_word("else") {
+        while !self.at_word("end") && !self.at_word("else") && !self.at_word("case") {
             if self.current().is_none() {
                 return Err(Problem::refused(
                     self.place(),
@@ -318,6 +326,7 @@ impl Parser {
             "while" => self.while_loop()?,
             "forever" => self.forever_loop()?,
             "break" => self.break_statement()?,
+            "match" => self.match_statement()?,
             "return" => self.return_statement()?,
             "std" | "my" => StatementKind::Call(self.call_statement()?),
             _ => {
@@ -344,7 +353,6 @@ impl Parser {
     fn misplaced_statement(&self, word: &str) -> Option<Problem> {
         let place = self.place();
         let problem = match word {
-            "match" => Problem::not_built(place, "`match` (the oracle's second slice, D72)"),
             "shield" => Problem::not_decided(place, "how a shield is written (D6)"),
             "fails" => Problem::not_decided(place, "the `fails … exactly when` wording (D56)"),
             "invariant" | "assert" => {
@@ -359,6 +367,11 @@ impl Parser {
                 place,
                 "`decreases` here",
                 "`decreases` is the first line of a `while` loop's body (D75)",
+            ),
+            "case" => Problem::refused(
+                place,
+                "`case` outside a `match`",
+                "a `case` is a branch of a `match` (D72)",
             ),
             "else" | "end" => Problem::refused(
                 place,
@@ -437,6 +450,17 @@ impl Parser {
 
     fn assignment(&mut self, start: Place) -> Result<Statement, Problem> {
         let name = self.take_value_name("a value's name")?;
+        let mut fields = Vec::new();
+        while self.at(&TokenKind::Dot) {
+            self.advance();
+            fields.push(self.take_word("a field's name", "`.` reads a field (D26, D58)")?);
+        }
+        if self.at(&TokenKind::OpenBracket) {
+            return Err(Problem::not_built(
+                self.place(),
+                "changing an `array` item (D64, D70)",
+            ));
+        }
         self.expect(
             &TokenKind::Equals,
             "`=`",
@@ -446,7 +470,10 @@ impl Parser {
         self.expect_semicolon()?;
         Ok(Statement {
             place: self.span_from(start),
-            kind: StatementKind::Assign { name, value },
+            kind: StatementKind::Assign {
+                target: Target { name, fields },
+                value,
+            },
         })
     }
 
@@ -764,37 +791,64 @@ impl Parser {
         } else {
             None
         };
-        if let Some(TokenKind::Word(word)) = self.kind() {
-            let followed_by_value = matches!(
-                self.kind_after(1),
-                Some(TokenKind::ValueName(_) | TokenKind::Dot)
-            );
-            match word.as_str() {
-                "Give" | "Copy" | "Lend" => {
-                    return Err(Problem::refused(
-                        self.place(),
-                        format!("`{word}` on a value that is always copied"),
-                        "integers and `bool` are always copied, so they take no ownership word (D92)",
-                    ));
-                }
-                "give" | "copy" | "lend" if followed_by_value => {
-                    let fixed = capitalised(word);
-                    return Err(Problem::refused(
-                        self.place(),
-                        format!("`{word}` in lowercase"),
-                        "ownership words start with a capital, so every hand-off stands out (D84)",
-                    )
-                    .fix(format!("`{fixed}`")));
-                }
-                _ => {}
-            }
-        }
+        let handoff = self.handoff()?;
         let value = self.expression()?;
+        if handoff.is_some() && !matches!(value.kind, ExpressionKind::Value(_)) {
+            return Err(Problem::not_decided(
+                value.place,
+                "handing over something other than a whole value's `$name`, such as a field",
+            ));
+        }
         Ok(Argument {
             place: self.span_from(start),
             label,
+            handoff,
             value,
         })
+    }
+
+    /// Reads `Give`, `Copy`, `Lend` or `Lend.mut` before an argument (D80, D84).
+    fn handoff(&mut self) -> Result<Option<Handoff>, Problem> {
+        let Some(TokenKind::Word(word)) = self.kind() else {
+            return Ok(None);
+        };
+        let place = self.place();
+        let followed_by_value = matches!(
+            self.kind_after(1),
+            Some(TokenKind::ValueName(_) | TokenKind::Dot)
+        );
+        let handoff = match word.as_str() {
+            "Give" => Handoff::Give,
+            "Copy" => Handoff::Copy,
+            "Lend" => {
+                if self.kind_after(1) == Some(&TokenKind::Dot) {
+                    self.advance();
+                    self.advance();
+                    let narrowing = self
+                        .take_word("`mut` after `Lend.`", "`Lend` narrows to `Lend.mut` (D80)")?;
+                    if narrowing != "mut" {
+                        return Err(Problem::refused(
+                            self.span_from(place),
+                            format!("`Lend.{narrowing}` isn't an ownership word"),
+                            "the ownership words are `Give`, `Copy`, `Lend` and `Lend.mut` (D80, D84)",
+                        ));
+                    }
+                    return Ok(Some(Handoff::LendMut));
+                }
+                Handoff::Lend
+            }
+            "give" | "copy" | "lend" if followed_by_value => {
+                return Err(Problem::refused(
+                    place,
+                    format!("`{word}` in lowercase"),
+                    "ownership words start with a capital, so every hand-off stands out (D84)",
+                )
+                .fix(format!("`{}`", capitalised(word))));
+            }
+            _ => return Ok(None),
+        };
+        self.advance();
+        Ok(Some(handoff))
     }
 }
 
@@ -944,47 +998,63 @@ impl Parser {
             "`:` and the parameter's type",
             "a parameter is `$name: type` (D50)",
         )?;
-        self.refuse_parameter_ownership()?;
+        let holding = self.holding()?;
         let type_spec = self.type_spec()?;
         Ok(Parameter {
             name,
             place: self.span_from(start),
             changeability,
+            holding,
             type_spec,
         })
     }
 
-    fn refuse_parameter_ownership(&self) -> Result<(), Problem> {
+    /// Reads how a parameter holds its value: bare (lent), `Lent.mut` or `Given` (D91, D92).
+    fn holding(&mut self) -> Result<Holding, Problem> {
         let Some(TokenKind::Word(word)) = self.kind() else {
-            return Ok(());
+            return Ok(Holding::Lent);
         };
         let place = self.place();
-        let problem = match word.as_str() {
-            "Lent" if self.kind_after(1) != Some(&TokenKind::Dot) => Problem::refused(
+        let word = word.clone();
+        match word.as_str() {
+            "Lent" if self.kind_after(1) == Some(&TokenKind::Dot) => {
+                self.advance();
+                self.advance();
+                let narrowing =
+                    self.take_word("`mut` after `Lent.`", "`Lent` narrows to `Lent.mut` (D91)")?;
+                if narrowing == "mut" {
+                    Ok(Holding::LentMut)
+                } else {
+                    Err(Problem::refused(
+                        self.span_from(place),
+                        format!("`Lent.{narrowing}` isn't a way to hold a parameter"),
+                        "a parameter is bare (lent), `Lent.mut` or `Given` (D91, D92)",
+                    ))
+                }
+            }
+            "Lent" => Err(Problem::refused(
                 place,
                 "`Lent` written out",
                 "a bare parameter is lent, and a default is never spelled out (D39, D92)",
             )
-            .fix("write the parameter bare"),
-            "Lent" | "Given" => Problem::refused(
-                place,
-                format!("`{word}` on a value that is always copied"),
-                "integers and `bool` are always copied, so they take no ownership word (D92)",
-            ),
-            "Lend" | "Give" | "Copy" => Problem::refused(
+            .fix("write the parameter bare")),
+            "Given" => {
+                self.advance();
+                Ok(Holding::Given)
+            }
+            "Lend" | "Give" | "Copy" => Err(Problem::refused(
                 place,
                 format!("`{word}` in a parameter"),
                 "parameters say `Lent.mut` or `Given`; `Lend`, `Give` and `Copy` are for calls (D91)",
-            ),
-            "lent" | "given" | "lend" | "give" | "copy" => Problem::refused(
+            )),
+            "lent" | "given" | "lend" | "give" | "copy" => Err(Problem::refused(
                 place,
                 format!("`{word}` in lowercase"),
                 "ownership words start with a capital (D84)",
             )
-            .fix(format!("`{}`", capitalised(word))),
-            _ => return Ok(()),
-        };
-        Err(problem)
+            .fix(format!("`{}`", capitalised(&word)))),
+            _ => Ok(Holding::Lent),
+        }
     }
 
     fn body_top(&mut self) -> Result<BodyTop, Problem> {
@@ -1182,11 +1252,62 @@ impl Parser {
                 "short forms are written in full unless they save 4 or more letters (D94)",
             )
             .fix("`string`")),
-            other => Err(Problem::not_built(
+            "array" => self.array_type(),
+            other if is_radium_word(other) => Err(Problem::refused(
                 start,
-                format!("the type `{other}` (the first slice has only `int[…]` and `bool`)"),
+                format!("`{other}` isn't a type"),
+                "a type is `int[…]`, `bool`, `array[…]` or a declared `struct` or `union.tagged` (D58, D59, D70)",
             )),
+            other => Ok(TypeSpec::Named(other.to_owned())),
         }
+    }
+
+    /// `array[element, length: N]` (D70).
+    fn array_type(&mut self) -> Result<TypeSpec, Problem> {
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[` after `array`",
+            "an array's element and length go in `[ ]` (D50, D70)",
+        )?;
+        let element = self.type_spec()?;
+        self.expect(
+            &TokenKind::Comma,
+            "`,` and then `length:`",
+            "an array type is `array[element, length: N]` (D70)",
+        )?;
+        self.expect_word(
+            "length",
+            "an array type is `array[element, length: N]` (D70)",
+        )?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after `length`",
+            "a label is a word and `:` (D54)",
+        )?;
+        let length_place = self.place();
+        let Some(TokenKind::Integer(length)) = self.kind().cloned() else {
+            return Err(Problem::not_built(
+                length_place,
+                "an array length written with a named constant",
+            ));
+        };
+        self.advance();
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the array type",
+            "an array type is `array[element, length: N]` (D70)",
+        )?;
+        if length.sign() != Sign::Plus {
+            return Err(Problem::refused(
+                length_place,
+                "an array of no items",
+                "an array holds a fixed number of values, at least one (D70)",
+            ));
+        }
+        Ok(TypeSpec::Array {
+            element: Box::new(element),
+            length,
+        })
     }
 
     /// `int[…]`, `int.wide[…]`, or an exact `int.signed.N_bit[…]` / `int.unsigned.N_bit[…]` (D14, D26, D27, D105,
@@ -1524,7 +1645,13 @@ impl Parser {
         let expression_kind = match kind {
             TokenKind::Integer(number) => ExpressionKind::Integer(number),
             TokenKind::Text(text) => ExpressionKind::Text(text),
-            TokenKind::ValueName(name) => ExpressionKind::Value(name),
+            TokenKind::ValueName(name) => {
+                self.advance();
+                return self.field_reads(Expression {
+                    place: start,
+                    kind: ExpressionKind::Value(name),
+                });
+            }
             TokenKind::OpenParen => {
                 // trace D50: maths grouping is the one place `( )` runs nothing.
                 self.advance();
@@ -1604,6 +1731,41 @@ impl Parser {
                     kind: ExpressionKind::Call(call),
                 });
             }
+            _ if self.kind_after(1) == Some(&TokenKind::OpenBracket) => {
+                self.advance();
+                let fields = self.field_values()?;
+                return Ok(Expression {
+                    place: self.span_from(start),
+                    kind: ExpressionKind::Build {
+                        type_name: word.to_owned(),
+                        case: None,
+                        fields,
+                    },
+                });
+            }
+            _ if self.kind_after(1) == Some(&TokenKind::Dot)
+                && matches!(self.kind_after(2), Some(TokenKind::Word(_))) =>
+            {
+                self.advance();
+                self.advance();
+                let case = self.take_word(
+                    "a case's name",
+                    "a case is written with its type: `status.ok` (D59)",
+                )?;
+                let fields = if self.at(&TokenKind::OpenBracket) {
+                    self.field_values()?
+                } else {
+                    Vec::new()
+                };
+                return Ok(Expression {
+                    place: self.span_from(start),
+                    kind: ExpressionKind::Build {
+                        type_name: word.to_owned(),
+                        case: Some(case),
+                        fields,
+                    },
+                });
+            }
             _ => {
                 return Err(Problem::refused(
                     start,
@@ -1614,6 +1776,358 @@ impl Parser {
         };
         self.advance();
         Ok(Expression { place: start, kind })
+    }
+}
+
+impl Parser {
+    /// Reads `.field` after a value, as often as written: `$r.celsius` (D26, D58).
+    fn field_reads(&mut self, mut base: Expression) -> Result<Expression, Problem> {
+        loop {
+            if self.at(&TokenKind::OpenBracket) {
+                return Err(Problem::not_built(
+                    self.place(),
+                    "reading an `array` item (D64, D70)",
+                ));
+            }
+            if !(self.at(&TokenKind::Dot) && matches!(self.kind_after(1), Some(TokenKind::Word(_))))
+            {
+                return Ok(base);
+            }
+            self.advance();
+            let name = self.take_word("a field's name", "`.` reads a field (D26, D58)")?;
+            base = Expression {
+                place: self.span_from(base.place),
+                kind: ExpressionKind::Field {
+                    base: Box::new(base),
+                    name,
+                },
+            };
+        }
+    }
+
+    /// Reads `[field = value, …]` when building a value (D50, D58).
+    fn field_values(&mut self) -> Result<Vec<FieldValue>, Problem> {
+        self.expect(
+            &TokenKind::OpenBracket,
+            "`[`",
+            "a value is built with its fields in `[ ]` (D50, D58)",
+        )?;
+        let mut fields = Vec::new();
+        if self.eat(&TokenKind::CloseBracket) {
+            return Ok(fields);
+        }
+        loop {
+            let start = self.place();
+            let name = self.take_word(
+                "a field's name",
+                "a field is set as `field = value` (D50, D58)",
+            )?;
+            self.expect(
+                &TokenKind::Equals,
+                "`=` and the field's value",
+                "a field is set as `field = value` (D50, D58)",
+            )?;
+            let value = self.expression()?;
+            fields.push(FieldValue {
+                place: self.span_from(start),
+                name,
+                value,
+            });
+            if !self.eat(&TokenKind::Comma) {
+                break;
+            }
+        }
+        self.expect(
+            &TokenKind::CloseBracket,
+            "`]` closing the fields",
+            "a value is built with its fields in `[ ]` (D50, D58)",
+        )?;
+        Ok(fields)
+    }
+
+    /// Reads `.must_Give` after `struct` or `union.tagged`, if it is there (D84).
+    fn must_give(&mut self) -> Result<bool, Problem> {
+        if !self.at(&TokenKind::Dot) {
+            return Ok(false);
+        }
+        let place = self.place();
+        self.advance();
+        let word = self.take_word("`must_Give`", "a type narrows to `must_Give` (D84)")?;
+        if word == "must_Give" {
+            return Ok(true);
+        }
+        Err(Problem::refused(
+            self.span_from(place),
+            format!("`.{word}` isn't a narrowing of a type"),
+            "a `struct` or `union.tagged` may be narrowed with `must_Give` (D84)",
+        ))
+    }
+
+    /// Reads `end` and the exact words of the opener, such as `end union.tagged.must_Give status` (D13).
+    fn end_words(&mut self, words: &[&str], name: &str, opener: Place) -> Result<(), Problem> {
+        let start = self.place();
+        let wanted = format!("`end {} {name}`", words.join("."));
+        let mut matched = self.eat_word("end");
+        for (index, word) in words.iter().enumerate() {
+            if index > 0 {
+                matched = matched && self.eat(&TokenKind::Dot);
+            }
+            matched = matched && self.eat_word(word);
+        }
+        matched = matched && self.eat_word(name);
+        if !matched
+            || self
+                .current()
+                .is_some_and(|token| token.place.line == start.line)
+        {
+            while self
+                .current()
+                .is_some_and(|token| token.place.line == start.line)
+            {
+                self.advance();
+            }
+            return Err(Problem::refused(
+                self.span_from(start),
+                "this `end` doesn't match its opener",
+                "every `end` matches its opener exactly (D13)",
+            )
+            .fix(wanted)
+            .because(opener, "the block opens here"));
+        }
+        Ok(())
+    }
+
+    /// Reads `name: type;` or `name.immut: type;` (D58).
+    fn field(&mut self) -> Result<Field, Problem> {
+        let start = self.place();
+        let name = self.take_word("a field's name", "a field is `name: type;` (D58)")?;
+        let locked = if self.eat(&TokenKind::Dot) {
+            let word = self.take_word(
+                "`immut` after the field's name",
+                "a field may be locked with `.immut` (D58)",
+            )?;
+            if word != "immut" {
+                return Err(Problem::refused(
+                    self.span_from(start),
+                    format!("`.{word}` on a field"),
+                    "a field may only be locked with `.immut`; there is no `.mut` for fields (D58)",
+                ));
+            }
+            true
+        } else {
+            false
+        };
+        self.expect(
+            &TokenKind::Colon,
+            "`:` and the field's type",
+            "a field is `name: type;` (D58)",
+        )?;
+        let type_spec = self.type_spec()?;
+        Ok(Field {
+            name,
+            place: self.span_from(start),
+            locked,
+            type_spec,
+        })
+    }
+
+    /// `struct name:` … `end struct name` (D58).
+    fn struct_definition(&mut self) -> Result<StructDefinition, Problem> {
+        let start = self.place();
+        self.expect_word("struct", "SSS: Radium (D58)")?;
+        let must_give = self.must_give()?;
+        let name = self.take_word(
+            "the struct's name",
+            "`struct` is followed by its name (D58)",
+        )?;
+        let place = self.span_from(start);
+        self.expect(
+            &TokenKind::Colon,
+            "`:` ending the struct's header",
+            "a block's opening line ends with `:` (D13)",
+        )?;
+        let mut fields = Vec::new();
+        while !self.at_word("end") {
+            if self.current().is_none() {
+                return Err(Problem::refused(
+                    self.place(),
+                    "the program ends inside a struct",
+                    "every block closes with `end` and its kind (D13)",
+                )
+                .because(place, "the struct opens here"));
+            }
+            fields.push(self.field()?);
+            self.expect_semicolon()?;
+        }
+        let words: &[&str] = if must_give {
+            &["struct", "must_Give"]
+        } else {
+            &["struct"]
+        };
+        self.end_words(words, &name, place)?;
+        Ok(StructDefinition {
+            name,
+            place,
+            must_give,
+            fields,
+        })
+    }
+
+    /// `union.tagged name:` … `end union.tagged name` (D59).
+    fn union_definition(&mut self) -> Result<UnionDefinition, Problem> {
+        let start = self.place();
+        self.expect_word("union", "SSS: Radium (D59)")?;
+        if !(self.at(&TokenKind::Dot)
+            && self.kind_after(1) == Some(&TokenKind::Word("tagged".to_owned())))
+        {
+            return Err(Problem::refused(
+                start,
+                "a bare `union` outside a shield",
+                "a bare `union` is C's untagged kind, allowed only inside shields; elsewhere it is `union.tagged` (D59)",
+            ));
+        }
+        self.advance();
+        self.advance();
+        let must_give = self.must_give()?;
+        let name = self.take_word(
+            "the union's name",
+            "`union.tagged` is followed by its name (D59)",
+        )?;
+        let place = self.span_from(start);
+        self.expect(
+            &TokenKind::Colon,
+            "`:` ending the union's header",
+            "a block's opening line ends with `:` (D13)",
+        )?;
+        let mut cases = Vec::new();
+        while !self.at_word("end") {
+            if self.current().is_none() {
+                return Err(Problem::refused(
+                    self.place(),
+                    "the program ends inside a union",
+                    "every block closes with `end` and its kind (D13)",
+                )
+                .because(place, "the union opens here"));
+            }
+            let case_start = self.place();
+            let case_name = self.take_word(
+                "a case's name",
+                "a case is `name;` or `name[field: type, …];` (D59)",
+            )?;
+            let mut fields = Vec::new();
+            if self.eat(&TokenKind::OpenBracket) {
+                loop {
+                    fields.push(self.field()?);
+                    if !self.eat(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(
+                    &TokenKind::CloseBracket,
+                    "`]` closing the case's fields",
+                    "a case's data goes in `[ ]` (D50, D59)",
+                )?;
+            }
+            cases.push(Case {
+                name: case_name,
+                place: self.span_from(case_start),
+                fields,
+            });
+            self.expect_semicolon()?;
+        }
+        let words: &[&str] = if must_give {
+            &["union", "tagged", "must_Give"]
+        } else {
+            &["union", "tagged"]
+        };
+        self.end_words(words, &name, place)?;
+        Ok(UnionDefinition {
+            name,
+            place,
+            must_give,
+            cases,
+        })
+    }
+
+    /// `match $x:` with `case type.case[field = $name]:` branches and one `end match` (D72).
+    fn match_statement(&mut self) -> Result<StatementKind, Problem> {
+        let opener = self.place();
+        self.expect_word("match", "SSS: Radium 5.3 (D72)")?;
+        let subject = self.expression()?;
+        self.expect(
+            &TokenKind::Colon,
+            "`:` after what is matched",
+            "a block's opening line ends with `:` (D13)",
+        )?;
+        let mut cases = Vec::new();
+        while self.at_word("case") {
+            let start = self.place();
+            self.advance();
+            let type_name = self.take_word(
+                "the union's name",
+                "a case is written with its type: `status.ok` (D59, D72)",
+            )?;
+            self.expect(
+                &TokenKind::Dot,
+                "`.` and the case",
+                "a case is written with its type: `status.ok` (D59, D72)",
+            )?;
+            let case_name = self.take_word(
+                "the case's name",
+                "a case is written with its type: `status.ok` (D59, D72)",
+            )?;
+            let mut bindings = Vec::new();
+            if self.eat(&TokenKind::OpenBracket) {
+                loop {
+                    let binding_start = self.place();
+                    let field = self.take_word(
+                        "a field's name",
+                        "a case pulls out its data as `field = $name` (D72)",
+                    )?;
+                    self.expect(
+                        &TokenKind::Equals,
+                        "`=` and a `$name`",
+                        "a case pulls out its data as `field = $name` (D72)",
+                    )?;
+                    let name = self.take_value_name("a `$name` to hold the field")?;
+                    bindings.push(CaseBinding {
+                        place: self.span_from(binding_start),
+                        field,
+                        name,
+                    });
+                    if !self.eat(&TokenKind::Comma) {
+                        break;
+                    }
+                }
+                self.expect(
+                    &TokenKind::CloseBracket,
+                    "`]` closing the case's data",
+                    "a case pulls out its data in `[ ]` (D72)",
+                )?;
+            }
+            let place = self.span_from(start);
+            self.expect(
+                &TokenKind::Colon,
+                "`:` after the case",
+                "a block's opening line ends with `:` (D13)",
+            )?;
+            let body = self.statements(opener)?;
+            cases.push(MatchCase {
+                place,
+                type_name,
+                case_name,
+                bindings,
+                body,
+            });
+        }
+        if cases.is_empty() {
+            return Err(self.expected(
+                "`case`",
+                "a `match` has one `case` per case of its union (D72)",
+            ));
+        }
+        self.end_line("match", None, opener)?;
+        Ok(StatementKind::Match { subject, cases })
     }
 }
 

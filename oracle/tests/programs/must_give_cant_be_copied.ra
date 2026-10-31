@@ -1,0 +1,16 @@
+// trace D84
+// expect: refused at line 14
+struct.must_Give open_file:
+    handle: int[min: 0, max: 65_535];
+end struct.must_Give open_file
+
+fn look [$f: open_file] -> void:
+    return void;
+end fn look
+
+fn.main [] -> void:
+    var $f: open_file = open_file[handle = 3];
+    look(Lend $f);
+    look(Copy $f); // here
+    return void;
+end fn.main

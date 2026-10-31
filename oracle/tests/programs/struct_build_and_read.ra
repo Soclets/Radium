@@ -1,0 +1,14 @@
+// trace D58
+// trace D26
+// expect: runs
+// output: 3600 21
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 3600, celsius = 21];
+    std::print($r.time, " ", $r.celsius, newline);
+    return void;
+end fn.main

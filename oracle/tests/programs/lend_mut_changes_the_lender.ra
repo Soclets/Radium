@@ -1,0 +1,20 @@
+// trace D80
+// trace D91
+// expect: runs
+// output: 22
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn warm [$r: Lent.mut reading] -> void:
+    $r.celsius = $r.celsius + 1;
+    return void;
+end fn warm
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 3600, celsius = 21];
+    warm(Lend.mut $r);
+    std::print($r.celsius, newline);
+    return void;
+end fn.main

@@ -1,0 +1,11 @@
+// trace D5
+// trace D84
+// expect: refused at line 9
+struct.must_Give open_file:
+    handle: int[min: 0, max: 65_535];
+end struct.must_Give open_file
+
+fn.main [] -> void:
+    var $f: open_file = open_file[handle = 3]; // here
+    return void;
+end fn.main

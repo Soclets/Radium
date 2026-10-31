@@ -1,0 +1,30 @@
+// trace D59
+// trace D72
+// expect: runs
+// output: failed with code 3
+// output: all good
+union.tagged status:
+    ok;
+    warming_up;
+    failed[code: int[min: 1, max: 255]];
+end union.tagged status
+
+fn report [$s: status] -> void:
+    match $s:
+        case status.ok:
+            std::print("all good", newline);
+        case status.warming_up:
+            std::print("wait", newline);
+        case status.failed[code = $c]:
+            std::print("failed with code ", $c, newline);
+    end match
+    return void;
+end fn report
+
+fn.main [] -> void:
+    var $bad: status = status.failed[code = 3];
+    report(Lend $bad);
+    var $good: status = status.ok;
+    report(Lend $good);
+    return void;
+end fn.main

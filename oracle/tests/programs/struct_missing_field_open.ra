@@ -1,0 +1,11 @@
+// trace D58
+// expect: not decided at line 9
+struct reading:
+    time: int[min: 0, max: 86_399];
+    celsius: int[min: -40, max: 125];
+end struct reading
+
+fn.main [] -> void:
+    var $r: reading = reading[time = 3600]; // here
+    return void;
+end fn.main
