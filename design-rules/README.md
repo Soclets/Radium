@@ -6,7 +6,7 @@ Radium are in [`implementation-rules/`](../implementation-rules/).
 
 | Rule | In short | From |
 |---|---|---|
-| [Clear syntax](clear-syntax.md) | Clear once learned: no traps, no hidden choices, one meaning each | D33 |
+| [Clear syntax](clear-syntax.md) | Clear once learned: no traps, no hidden choices, one meaning each, nothing is never a gap | D33, D146 |
 | [Choosing words](choosing-words.md) | The settled programming word; short forms only if the owner reads them cold; symbols only from school maths | D34, D58, D63 |
 | [Dots and underscores](dots-and-underscores.md) | `.` narrows the thing before it; `_` joins words into one name | D26, D35 |
 | [Brackets](brackets.md) | `( )` runs; `[ ]` describes or holds; maths grouping is the one exception | D50 |

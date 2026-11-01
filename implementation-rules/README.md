@@ -1,13 +1,13 @@
 # Implementation rules
 
 The rules for the code that implements Radium: the compiler (Curie), the prover (Geiger), the proof checker, the
-runtime and the oracle. `DECISIONS.md` records each decision with the owner's words; these files collect the rule
+runtime (SPARK, D147) and the oracle. `DECISIONS.md` records each decision with the owner's words; these files collect the rule
 itself, so new code can be checked against it. The rules for the language's own design are in
 [`design-rules/`](../design-rules/).
 
 | Rule | In short | From |
 |---|---|---|
-| [Languages](languages.md) | Rust, with minimal C++ for LLVM; Radium for `std` and tests; nothing else without the owner's OK | D15, D16, D46 |
+| [Languages](languages.md) | Rust, with minimal C++ for LLVM and SPARK for the runtime; Radium for `std` and tests; nothing else without the owner's OK | D15, D16, D46, D147 |
 | [Naming](naming.md) | Full words, one name per concept, module paths match section markers | D19 |
 | [Comments and tracing](comments-and-tracing.md) | Section markers and `trace D<n>` tags, checked by a script | D18 |
 | [Code style](code-style.md) | rustfmt, pedantic clippy, no `unwrap` in trusted code, comments say why | D20 |

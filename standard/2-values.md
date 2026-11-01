@@ -40,5 +40,7 @@ const $size: int[min: 1, max: 8] = 4;
    *Tests:* `void_is_only_a_result`.
 3. **A bare `string` is UTF-8 text**; other encodings are narrowings, and `string.utf8` is refused as a spelled-out
    default (D120). `str` is written in full as `string` (D94). Counting or indexing text always says its unit, bytes,
-   code points or grapheme clusters, with no default (D121). The rest of text types: **not decided**.
-   *Tests:* `string_open`, `string_utf8_spelled_out`, `str_written_in_full`.
+   code points or grapheme clusters, with no default (D121). **An empty string is `string.empty`; `""` is refused**,
+   since nothing is never left as a gap (D145, D146). The rest of text types: **not decided**.
+   *Tests:* `string_open`, `string_utf8_spelled_out`, `str_written_in_full`, `empty_string_written_out`,
+   `empty_quotes_refused`.

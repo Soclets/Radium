@@ -175,7 +175,7 @@ Proposed by design claude, owner: "yes".
 |---|---|
 | Compiler: parser, type and ownership checker, prover, lowering | Rust |
 | LLVM wrapper, only what LLVM's C API lacks; custom LLVM passes (D17) | C++, kept minimal |
-| Runtime linked into every program | `no_std` Rust |
+| Runtime linked into every program | `no_std` Rust (SPARK since D147) |
 | Proof checker (D12) | Rust, proven correct with Verus; cross-checked by an independent external checker (e.g. Carcara) |
 | Oracles (independent interpreter, etc.) | Rust, written separately from the compiler, no shared code |
 
@@ -2335,11 +2335,83 @@ end if
 It is checked while compiling without proving which way each `if` goes, and a reader checks it by looking down the
 code. As in Rust.
 
+## D145 — An empty string is `string.empty` (2026-10-31)
+
+Design claude first proposed `""`; owner: "look at `return void;`". As a bare `return;` is refused so a forgotten value
+is never mistaken for an empty one (D100), **an empty string is written `string.empty`, and `""` is refused**:
+
+```
+var $name: string = string.empty;     // fine
+var $name: string = "";               // refused
+```
+
+It also removes the `""` / `" "` look-alike. Owner: "yes".
+
+## D146 — Nothing is never a gap (2026-10-31)
+
+Owner asked whether the rule behind D145 was recorded; design claude: only its cases were (D98, D99, D100, D145), and
+proposed the rule; owner: "yes". **An empty or absent value is written as a word, never left as a blank**, so a
+deliberate nothing can't be mistaken for something forgotten: `-> void` not a missing `->`, `return void;` not
+`return;`, `string.empty` not `""`. Added to `design-rules/clear-syntax.md` as rule 4; new features (an empty list,
+for one) are checked against it.
+
+## D147 — The runtime is written in SPARK (2026-10-31)
+
+Owner asked "Should we use SPARK?"; design claude compared it part by part, and named the runtime as the best fit:
+small, in every final product, and exactly the code SPARK proves best, in a language independent of the compiler's.
+Owner asked whether GNAT's narrower set of targets would bind Radium even if it were self-hosted; design claude: only
+while the runtime is SPARK. Owner: obscure targets would only be needed once Radium "has grown enough", and asked
+when Radium had been for small boards; design claude: never decided, only mentioned in D22's and D70's reasoning.
+Owner: "yes". **Amends D16 and D46**:
+
+- **The runtime linked into every program is SPARK**, proven free of run-time errors with GNATprove. An explicit
+  exception to the languages rule, for the runtime only; everything else stays as D16 says.
+- **Its targets are GNAT's for now**: Radium supports the chips GNAT can build for.
+- **It is built separately**, with its own tools (GNAT, gprbuild, GNATprove), outside Cargo and CMake, as D46 keeps
+  builds apart.
+- **It is replaced later**: if Radium grows enough to write its runtime in Radium (proven by Geiger, raw parts in
+  shields, D6), that version takes over and the target limit goes.
+
+Which targets Radium supports is otherwise still open.
+
+Owner asked whether that was SPARK gold; design claude: as written it was silver (no run-time errors), and
+recommended gold, since an allocator that handed out the same memory twice wouldn't crash, only quietly break every
+proof about the program; owner: "yup". **The runtime is proven to SPARK's gold level**, with these key properties:
+
+1. the heap allocator never hands out memory already in use, stays within the program's heap budget (D8), and frees
+   what it is given back;
+2. a failed check always stops the program with its message (D114, D123), and nothing runs after it;
+3. whatever else the runtime provides keeps the promises Geiger assumes about it.
+
+Platinum (every function's full behaviour) is not required; single parts may go there later.
+
+## D148 — Radium's audience: small critical parts of larger C and C++ programs (2026-11-01)
+
+Owner: since no certification is sought (D1), the real audience "might just be small parts of a big C++ codebase",
+where the stakes are not "one mistake is death" but "one mistake is game exploits". Design claude drafted the line;
+owner: "Yes". **Radium is for small critical parts inside larger C and C++ programs, where one mistake becomes an
+exploit**: games' netcode, economy, saves and anti-cheat, and similar. No certification is sought, and it is not meant
+for life-safety use (D1).
+
+What it sharpens: calls from C and C++ into Radium are the attack surface, so their wall matters most; identical
+results on every machine matter for multiplayer kept in sync (D22); speed matters (D81); side channels (D6's open
+"more diabolical") matter for anti-cheat and secrets. A small part also makes higher proof levels affordable.
+
+## D149 — `.l.`, a deliberate inconsistency (2026-11-01)
+
+Owner's design: Radium gets **`.l.`**, a meme in the spirit of Rust's turbofish (`::<>`), for joining an interface:
+`reading .l. ordered;`. It is **documented as a deliberate inconsistency**: it breaks the rules on words over symbols
+(D34) and one meaning per mark (D33) on purpose. Design claude recommended an Easter egg over replacing `satisfies`; owner: "Easter". **`.l.` is an
+Easter-egg alternative**: `reading satisfies ordered;` stays the normal spelling, and `reading .l. ordered;` means the
+same.
+
 ---
 
 ## Open
 
 
+- How a compound type provides a named value such as `std::list.empty` (D146): a type's own named values,
+  written `type.name` like `status.ok`, or a function. Raised 2026-10-31, left open by the owner.
 - What "more diabolical" covers beyond D6–D12 (e.g. timing and side channels).
 - **Syntax phase** (owner: spellings get designed together, later). Collected so far: the contract keywords
   (`requires`, `ensures`, `invariant`, `assert`, `decreases`, ghost code, lemmas — D4); the ownership words (D5; done: D80, D84);
