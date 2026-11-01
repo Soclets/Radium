@@ -1957,6 +1957,19 @@ impl Parser {
             }
             "old" => return self.old_value(start),
             "result" => ExpressionKind::Result,
+            "string"
+                if self.kind_after(1) == Some(&TokenKind::Dot)
+                    && matches!(self.kind_after(2), Some(TokenKind::Word(word)) if word == "empty") =>
+            {
+                // trace D145: an empty string is written out, never left as `""`.
+                self.advance();
+                self.advance();
+                self.advance();
+                return Ok(Expression {
+                    place: self.span_from(start),
+                    kind: ExpressionKind::Text(String::new()),
+                });
+            }
             "Give" | "Copy" | "Lend" | "give" | "copy" | "lend"
                 if matches!(
                     self.kind_after(1),

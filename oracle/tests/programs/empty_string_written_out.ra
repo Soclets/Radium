@@ -1,0 +1,7 @@
+// trace D145
+// expect: runs
+// output: []
+fn.main [] -> void:
+    std::print("[", string.empty, "]", newline);
+    return void;
+end fn.main

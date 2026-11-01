@@ -245,6 +245,14 @@ impl Scanner<'_> {
         let mut text = String::new();
         while let Some((offset, character)) = self.characters.next() {
             match character {
+                '"' if text.is_empty() => {
+                    return Err(Problem::refused(
+                        self.place_to_here(start),
+                        "`\"\"` leaves the empty string as a gap",
+                        "an empty value is written as a word, never left blank (D145, D146)",
+                    )
+                    .fix("`string.empty`"));
+                }
                 '"' => return Ok(TokenKind::Text(text)),
                 '\\' => {
                     return Err(Problem::not_decided(
