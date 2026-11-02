@@ -1,0 +1,7 @@
+// trace D152
+// expect: runs
+// output: done
+fn.main [] -> int[min: 0, max: 2]:
+    std::print("done", newline);
+    return 1;
+end fn.main

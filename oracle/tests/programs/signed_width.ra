@@ -1,9 +1,10 @@
 // trace D26
 // trace D27
-// expect: check fails at line 8
+// trace D151
+// expect: check fails at line 9
 // output: -128
 fn.main [] -> void:
-    var $small: int.signed.8_bit[min: -128, max: 127] = -128;
+    var $small: int.signed.8_bit = -128;
     std::print($small, newline);
     $small = $small - 1; // here
     return void;

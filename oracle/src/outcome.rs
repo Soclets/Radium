@@ -166,6 +166,8 @@ pub enum Outcome {
     Runs {
         /// Everything the program printed.
         output: String,
+        /// What it reports to the system: `fn.main`'s number, or 0 for a `-> void` program that finished (D152).
+        exit_status: u8,
     },
     /// The program was stopped before or while it ran, with the message saying why.
     Stopped {
@@ -227,7 +229,7 @@ impl Outcome {
     #[must_use]
     pub fn output(&self) -> &str {
         match self {
-            Self::Runs { output } | Self::Stopped { output, .. } => output,
+            Self::Runs { output, .. } | Self::Stopped { output, .. } => output,
             Self::OracleFault { .. } => "",
         }
     }
@@ -292,6 +294,16 @@ impl Problem {
             what,
             "this is the oracle's own limit, not a judgement on the program",
         )
+    }
+
+    /// Whether a check failed here while running.
+    pub(crate) fn is_check_failed(&self) -> bool {
+        self.0.kind == Kind::CheckFailed
+    }
+
+    /// The place it points at.
+    pub(crate) fn place(&self) -> Place {
+        self.0.place
     }
 
     /// Adds the one fix (D116).

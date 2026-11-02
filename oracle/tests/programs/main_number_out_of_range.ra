@@ -1,0 +1,5 @@
+// trace D152
+// expect: refused at line 3
+fn.main [] -> int[min: 0, max: 256]: // here
+    return 0;
+end fn.main

@@ -6,8 +6,8 @@ use std::collections::HashMap;
 
 use crate::ast::{
     Bounds, Call, CallTarget, Expression, ExpressionKind, Field, FieldValue, Function, Handoff,
-    Index, LoopRange, LoopSource, MatchCase, Operator, Program, RangeEnd, RemainderRule, Rounding,
-    Statement, StatementKind, Step, Target, TypeSpec,
+    Holder, Index, LoopRange, LoopSource, MatchCase, Operator, Program, RangeEnd, RemainderRule,
+    Rounding, Statement, StatementKind, Step, Target, TypeSpec,
 };
 use crate::types::Types;
 use num_bigint::{BigInt, Sign};
@@ -37,8 +37,8 @@ impl From<Problem> for Stop {
     }
 }
 
-/// Runs `fn.main` (D101), returning how it ended and everything printed.
-pub(crate) fn run(program: &Program) -> (Result<(), Stop>, String) {
+/// Runs `fn.main` (D101), returning how it ended, with the status it reports (D152), and everything printed.
+pub(crate) fn run(program: &Program) -> (Result<u8, Stop>, String) {
     let types = match Types::new(program) {
         Ok(types) => types,
         Err(problem) => return (Err(fault(problem.what())), String::new()),
@@ -59,9 +59,16 @@ pub(crate) fn run(program: &Program) -> (Result<(), Stop>, String) {
         old: HashMap::new(),
         result: None,
     };
+    // trace D152: `fn.main`'s number is the exit status; a `-> void` program that finishes reports 0.
     let result = machine
         .invoke(&program.main, &mut frame, program.main.place)
-        .map(|_| ());
+        .and_then(|value| match value {
+            None => Ok(0),
+            Some(Value::Integer(number)) => {
+                u8::try_from(number).map_err(|_| fault("an exit status outside 0 to 255"))
+            }
+            Some(_) => Err(fault("`fn.main` gave back something other than a number")),
+        });
     (result, machine.output)
 }
 
@@ -179,6 +186,50 @@ impl<'program> Machine<'program> {
         Ok(())
     }
 
+    /// `var $x: type = value;` and its kinds (D30, D41). A `const` is worked out while compiling (D155).
+    fn declaration(
+        &mut self,
+        place: Place,
+        holder: Holder,
+        name: &str,
+        type_spec: Option<&TypeSpec>,
+        expression: &'program Expression,
+        frame: &mut Frame,
+    ) -> Result<(), Stop> {
+        let value = match self.evaluate(expression, frame) {
+            // trace D155: a `const` is worked out while compiling, so a check that fails there refuses the build.
+            Err(Stop::Problem(problem)) if holder == Holder::Const && problem.is_check_failed() => {
+                let inner = problem.place();
+                let fact = problem.what().to_owned();
+                return Err(Problem::refused(
+                    expression.place,
+                    format!("`${name}` can't be worked out: a check fails while computing it"),
+                    "a `const` is worked out while compiling, so a check that fails there refuses the build (D155)",
+                )
+                .because(inner, fact)
+                .into());
+            }
+            other => other?,
+        };
+        let bounds = type_spec.and_then(TypeSpec::bounds).cloned();
+        let slot = Slot {
+            value,
+            bounds,
+            type_spec: type_spec.cloned(),
+            declared: place,
+        };
+        check_bounds(expression.place, name, &slot.value, &slot)?;
+        check_items(
+            expression.place,
+            &format!("${name}"),
+            &slot.value,
+            slot.type_spec.as_ref(),
+            slot.declared,
+        )?;
+        frame.declare(name, slot);
+        Ok(())
+    }
+
     fn statement(
         &mut self,
         statement: &'program Statement,
@@ -187,28 +238,12 @@ impl<'program> Machine<'program> {
         let place = statement.place;
         match &statement.kind {
             StatementKind::Declare {
+                holder,
                 name,
                 type_spec,
                 value: expression,
-                ..
             } => {
-                let value = self.evaluate(expression, frame)?;
-                let bounds = type_spec.as_ref().and_then(TypeSpec::bounds).cloned();
-                let slot = Slot {
-                    value,
-                    bounds,
-                    type_spec: type_spec.clone(),
-                    declared: place,
-                };
-                check_bounds(expression.place, name, &slot.value, &slot)?;
-                check_items(
-                    expression.place,
-                    &format!("${name}"),
-                    &slot.value,
-                    slot.type_spec.as_ref(),
-                    slot.declared,
-                )?;
-                frame.declare(name, slot);
+                self.declaration(place, *holder, name, type_spec.as_ref(), expression, frame)?;
                 Ok(Flow::Normal)
             }
             StatementKind::Assign {

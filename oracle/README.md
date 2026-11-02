@@ -94,9 +94,10 @@ from parameters, `requires $a lasts_at_least $b;`, and no borrow from a fresh va
 
 **Not built yet:** `std::list` and the maps, failures and `otherwise`, function collections, generics (`?T`, also in a
 `< >` group), `decreases` on functions, storing a `Lend.mut` (D135), following a borrow's holder that is given a new
-borrow while its old source changes, hex numbers.
+borrow while its old source changes, hex numbers, binary floats (D154), working out a `const` on a path that never runs
+(the oracle works a `const` out when its line runs).
 
-**Not decided, so reported:** parameters for `fn.main`, and anything it gives back but `void` (D101); a bare `int`;
+**Not decided, so reported:** parameters for `fn.main` (D101); a bare `int`;
 text types (`string`); shadowing; `fails … exactly when`; shields; `invariant`/`assert` spellings; a way to throw a
 result away on purpose (D97); building a struct without every field; comparing or printing a whole struct, union or
 array; a parameter whose type is itself a stored borrow; a `union.tagged` case holding a borrow; a source said to
@@ -130,6 +131,8 @@ The oracle had to read these one way to run at all. None is a decision; each wai
 15. ~~A stored `Lend` as a copy~~: an oracle method, D141 (below).
 16. ~~Lending and copying a borrow~~: decided, D142 and D143.
 17. ~~What counts as a later use~~: decided, D144.
+18. **A `fn.pure.baked` function calls only other baked functions**, reading D156's "stays runnable while
+    compiling": an unbaked one could later reach into a shield and break it without being refused itself.
 
 ## Oracle methods
 

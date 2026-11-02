@@ -36,7 +36,10 @@ pub fn run_source(source: &str) -> Outcome {
     };
     let (result, output) = interpreter::run(&program);
     match result {
-        Ok(()) => Outcome::Runs { output },
+        Ok(exit_status) => Outcome::Runs {
+            output,
+            exit_status,
+        },
         Err(Stop::Problem(problem)) => Outcome::Stopped {
             message: problem.into_message(),
             output,

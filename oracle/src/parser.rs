@@ -861,9 +861,8 @@ fn capitalised(word: &str) -> String {
 }
 
 impl Parser {
-    fn function(&mut self) -> Result<Function, Problem> {
-        let start = self.place();
-        self.expect_word("fn", "a function starts with `fn` (D51)")?;
+    /// `fn`, `fn.pure`, `fn.pure.baked` or `fn.main`: pure, baked, main (D51, D101, D156).
+    fn function_narrowing(&mut self, start: Place) -> Result<(bool, bool, bool), Problem> {
         let narrowing = if self.eat(&TokenKind::Dot) {
             Some(self.take_word(
                 "`pure` or `main` after `fn.`",
@@ -884,13 +883,36 @@ impl Parser {
                 ));
             }
         };
+        // trace D156: `fn.pure` narrows once more, to `fn.pure.baked`.
+        let baked = pure && self.at(&TokenKind::Dot) && {
+            self.advance();
+            let word = self.take_word(
+                "`baked` after `fn.pure.`",
+                "`fn.pure` narrows to `fn.pure.baked` (D156)",
+            )?;
+            if word != "baked" {
+                return Err(Problem::refused(
+                    self.span_from(start),
+                    format!("`fn.pure.{word}` isn't a kind of function"),
+                    "`fn.pure` narrows only to `fn.pure.baked` (D156)",
+                ));
+            }
+            true
+        };
         if self.at(&TokenKind::Dot) {
             return Err(Problem::refused(
                 self.place(),
                 "a second narrowing of `fn`",
-                "a function takes one narrowing: `fn.pure` or `fn.main` (D51, D101)",
+                "a function takes one narrowing, `fn.pure` or `fn.main`, and `fn.pure` one more, `.baked` (D51, D101, D156)",
             ));
         }
+        Ok((pure, baked, is_main))
+    }
+
+    fn function(&mut self) -> Result<Function, Problem> {
+        let start = self.place();
+        self.expect_word("fn", "a function starts with `fn` (D51)")?;
+        let (pure, baked, is_main) = self.function_narrowing(start)?;
         let name = if is_main {
             "fn.main".to_owned()
         } else {
@@ -948,6 +970,7 @@ impl Parser {
             name,
             place,
             pure,
+            baked,
             is_main,
             sources,
             parameters,
@@ -1528,6 +1551,11 @@ impl Parser {
             Some(Some(self.integer_width(start)?))
         };
         if !self.eat(&TokenKind::OpenBracket) {
+            // trace D151: an exact width alone holds its whole range.
+            if let Some(Some((signed, bits))) = width {
+                let (min, max) = width_range(signed, bits);
+                return Ok(TypeSpec::Integer(Bounds { min, max }));
+            }
             return Err(Problem::not_decided(
                 self.span_from(start),
                 "an integer type without bounds (D26)",
@@ -1566,7 +1594,19 @@ impl Parser {
         let place = self.span_from(start);
         let bounds = Bounds { min, max };
         match width {
-            Some(Some((signed, bits))) => check_width(place, &bounds, signed, bits)?,
+            Some(Some((signed, bits))) => {
+                check_width(place, &bounds, signed, bits)?;
+                let (lowest, highest) = width_range(signed, bits);
+                if bounds.min == lowest && bounds.max == highest {
+                    let kind = if signed { "signed" } else { "unsigned" };
+                    return Err(Problem::refused(
+                        place,
+                        "these bounds are the width's whole range, which it holds anyway",
+                        "an exact width alone means its whole range, and a default is never spelled out (D39, D151)",
+                    )
+                    .fix(format!("`int.{kind}.{bits}_bit`")));
+                }
+            }
             // trace D107: `int.wide` is only for bounds that need more than 64 bits.
             Some(None) if fits_64_bits(&bounds) => {
                 return Err(Problem::refused(
@@ -2537,13 +2577,18 @@ fn fits_64_bits(bounds: &Bounds) -> bool {
 }
 
 /// Refuses bounds that a narrowed width can't hold (D27).
-fn check_width(place: Place, bounds: &Bounds, signed: bool, bits: u32) -> Result<(), Problem> {
-    let (lowest, highest) = if signed {
+/// The lowest and highest values an exact width holds (D27).
+fn width_range(signed: bool, bits: u32) -> (BigInt, BigInt) {
+    if signed {
         let half = BigInt::from(1) << bits.saturating_sub(1);
         (-half.clone(), half - 1)
     } else {
         (BigInt::from(0), (BigInt::from(1) << bits) - 1)
-    };
+    }
+}
+
+fn check_width(place: Place, bounds: &Bounds, signed: bool, bits: u32) -> Result<(), Problem> {
+    let (lowest, highest) = width_range(signed, bits);
     if bounds.min < lowest || bounds.max > highest {
         let kind = if signed { "signed" } else { "unsigned" };
         return Err(Problem::refused(

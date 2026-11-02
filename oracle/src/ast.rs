@@ -59,6 +59,8 @@ pub(crate) struct Function {
     pub(crate) place: Place,
     /// `fn.pure` (D51).
     pub(crate) pure: bool,
+    /// `fn.pure.baked`: a `const` may call it, and its value is worked out while compiling (D155, D156).
+    pub(crate) baked: bool,
     /// `fn.main`: where the program starts; nothing may call it (D101).
     pub(crate) is_main: bool,
     /// Its own named sources, for borrows inside its parameters (D136).

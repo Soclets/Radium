@@ -345,6 +345,19 @@ impl Scanner<'_> {
                 "`x` needs spaces around it, so a number and a word never touch (D34)",
             ));
         }
+        // trace D154: floats are built in, but the oracle doesn't run them yet.
+        if self.peek_char() == Some('.')
+            && self
+                .characters
+                .clone()
+                .nth(1)
+                .is_some_and(|(_, character)| character.is_ascii_digit())
+        {
+            return Err(Problem::not_built(
+                self.place_through_next(start),
+                "binary floats and decimal literals (D24, D25, D153, D154)",
+            ));
+        }
         let digits: String = written
             .chars()
             .filter(|character| *character != '_')

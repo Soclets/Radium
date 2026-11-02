@@ -53,11 +53,18 @@ pub(crate) fn check(program: &Program) -> Result<(), Problem> {
             "parameters for `fn.main`, such as command-line arguments (D101)",
         ));
     }
-    if main.result.is_some() {
-        return Err(Problem::not_decided(
-            main.place,
-            "what `fn.main` may give back besides `void`, such as an exit status (D101)",
-        ));
+    // trace D152: `fn.main` gives back `void` or a number the system passes on unchanged.
+    if let Some(result) = &main.result {
+        let fits = result
+            .bounds()
+            .is_some_and(|bounds| bounds.min >= BigInt::ZERO && bounds.max <= BigInt::from(255));
+        if !fits || !matches!(result, TypeSpec::Integer(_)) {
+            return Err(Problem::refused(
+                main.place,
+                "`fn.main` gives back something other than a number from 0 to 255",
+                "`fn.main` gives back `void` or an integer whose bounds sit inside 0 to 255, which every system passes on unchanged (D152)",
+            ));
+        }
     }
     checker.function_definition(main)
 }
@@ -599,10 +606,17 @@ impl<'program> Checker<'program> {
             ));
         }
         if holder == Holder::Const && !self.is_constant(value) {
+            if let Some((place, name)) = self.unbaked_call(value) {
+                return Err(Problem::refused(
+                    place,
+                    format!("`{name}` isn't `fn.pure.baked`, so a `const` can't call it"),
+                    "a `const` calls only `fn.pure.baked` functions, which are kept runnable while compiling (D155, D156)",
+                ));
+            }
             return Err(Problem::refused(
                 value.place,
                 "this value isn't known when compiling",
-                "a `const` is known when compiling, so its value uses only numbers, `true`, `false` and other `const`s (D30)",
+                "a `const` is known when compiling, so its value uses only numbers, `true`, `false`, other `const`s and calls to `fn.pure.baked` functions (D30, D155)",
             ));
         }
         if let Some(first) = self.lookup(name) {
@@ -1157,6 +1171,15 @@ impl Checker<'_> {
                 call.place,
                 "whether `my.` may be written when no name clashes (D43)",
             ));
+        }
+        let in_baked = self.function.is_some_and(|function| function.baked);
+        if in_baked && !function.baked {
+            return Err(Problem::refused(
+                call.place,
+                format!("`{name}` isn't `fn.pure.baked`"),
+                "a `fn.pure.baked` function stays runnable while compiling, so it calls only other baked functions (D156)",
+            )
+            .because(function.place, format!("`{name}` is declared here")));
         }
         if in_pure && !function.pure {
             return Err(Problem::refused(
@@ -1901,17 +1924,48 @@ impl Checker<'_> {
             ExpressionKind::Binary { left, right, .. } => {
                 self.is_constant(left) && self.is_constant(right)
             }
+            // trace D155: a `const` may call a `fn.pure.baked` function with values known when compiling.
+            ExpressionKind::Call(call) => {
+                matches!(&call.target, CallTarget::Own { name, .. }
+                    if self.functions.get(name.as_str()).is_some_and(|function| function.baked))
+                    && call.arguments.iter().all(|argument| {
+                        argument.handoff.is_none() && self.is_constant(&argument.value)
+                    })
+            }
             ExpressionKind::Text(_)
             | ExpressionKind::Newline
             | ExpressionKind::Old(_)
             | ExpressionKind::Result
-            | ExpressionKind::Call(_)
             | ExpressionKind::Build { .. }
             | ExpressionKind::Field { .. }
             | ExpressionKind::Array { .. }
             | ExpressionKind::Item { .. }
             | ExpressionKind::Handoff { .. }
             | ExpressionKind::LastsAtLeast { .. } => false,
+        }
+    }
+
+    /// The first call in a value to a function that isn't `fn.pure.baked`, for a `const` (D156).
+    fn unbaked_call(&self, expression: &Expression) -> Option<(Place, String)> {
+        match &expression.kind {
+            ExpressionKind::Call(call) => {
+                if let CallTarget::Own { name, .. } = &call.target
+                    && !self
+                        .functions
+                        .get(name.as_str())
+                        .is_some_and(|function| function.baked)
+                {
+                    return Some((call.place, name.clone()));
+                }
+                call.arguments
+                    .iter()
+                    .find_map(|argument| self.unbaked_call(&argument.value))
+            }
+            ExpressionKind::Negate(inner) | ExpressionKind::Not(inner) => self.unbaked_call(inner),
+            ExpressionKind::Binary { left, right, .. } => {
+                self.unbaked_call(left).or_else(|| self.unbaked_call(right))
+            }
+            _ => None,
         }
     }
 

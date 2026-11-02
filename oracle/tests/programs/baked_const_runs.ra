@@ -1,0 +1,13 @@
+// trace D155
+// trace D156
+// expect: runs
+// output: 604800
+fn.pure.baked seconds_in [$days: int[min: 0, max: 365]] -> int[min: 0, max: 31_536_000]:
+    return $days x 86_400;
+end fn seconds_in
+
+fn.main [] -> void:
+    const $week: int[min: 0, max: 31_536_000] = seconds_in(7);
+    std::print($week, newline);
+    return void;
+end fn.main

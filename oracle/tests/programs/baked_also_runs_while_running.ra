@@ -1,0 +1,12 @@
+// trace D156
+// expect: runs
+// output: 172800
+fn.pure.baked seconds_in [$days: int[min: 0, max: 365]] -> int[min: 0, max: 31_536_000]:
+    return $days x 86_400;
+end fn seconds_in
+
+fn.main [] -> void:
+    var $days: int[min: 0, max: 365] = 2;
+    std::print(seconds_in($days), newline);
+    return void;
+end fn.main
