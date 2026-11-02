@@ -6,8 +6,11 @@
    name: a writer's own function may be called `main`.
    *Tests:* `one_main_only`, `main_is_not_a_reserved_name`, `old_main_block_refused`.
 2. `fn.main` is written `fn.main [] -> void:` … `end fn.main`, and follows every rule for functions (section 7).
-   Parameters for `fn.main`, and a result other than `void`: **not decided**.
-   *Tests:* `hello`, `main_needs_return_void`, `main_parameters_open`.
+   **It may instead give back an integer whose bounds sit inside 0 to 255**, the program's exit status, passed on
+   unchanged; other bounds are refused. A `-> void` program that finishes reports success (D152). Parameters for
+   `fn.main`: **not decided**.
+   *Tests:* `hello`, `main_needs_return_void`, `main_parameters_open`, `main_gives_back_a_number`,
+   `main_number_out_of_range`.
 
 ## 1.2 Blocks
 

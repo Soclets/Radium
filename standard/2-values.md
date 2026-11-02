@@ -16,7 +16,7 @@
    | `var` | may change; no promise either way |
    | `var.immut` | never changes after it is set; changing it is refused |
    | `var.mut` | must change somewhere; one that nothing changes is refused |
-   | `const` | known when compiling; its value may use only numbers, `true`, `false` and other `const`s; it never changes |
+   | `const` | known when compiling; its value may use only numbers, `true`, `false`, other `const`s and calls to `fn.pure.baked` functions (D155, D156); it never changes |
 
 2. **Every value states its type, or `: infer`** (D108). `: infer` asks Geiger to work out the type and bounds, and is
    allowed on local values only. A value with neither is refused.
@@ -31,7 +31,8 @@ const $size: int[min: 1, max: 8] = 4;
 ```
 
 *Tests:* `var_kinds`, `var_immut_never_changes`, `const_never_changes`, `var_mut_must_change`,
-`const_known_when_compiling`, `missing_type_refused`, `infer_only_for_locals`.
+`const_known_when_compiling`, `missing_type_refused`, `infer_only_for_locals`, `baked_const_runs`,
+`const_calls_unbaked_refused`, `baked_const_check_refused`.
 
 ## 2.3 Types
 

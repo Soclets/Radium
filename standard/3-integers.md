@@ -21,7 +21,9 @@
 3. **Beyond 64 bits:** `int.wide[…]` takes whatever width its bounds need. Bounds that fit in 64 bits are refused on
    `int.wide`: write `int[…]` (D107).
 4. **An exact width:** `int.signed.N_bit[…]` or `int.unsigned.N_bit[…]`, for formats and hardware (D26, D27). Bounds
-   the width can't hold are refused; an unsigned width holds no negative bound. A signedness without a width
+   the width can't hold are refused; an unsigned width holds no negative bound. **An exact width alone means its
+   whole range**: `int.signed.8_bit` is −128 to 127, as C's `int8_t`; writing that whole range out is refused as a
+   spelled-out default (D39, D151). A bare `int` or `int.wide` always states its bounds. A signedness without a width
    (`int.signed[…]`): **not decided**.
 5. Signed and unsigned integers mix freely: every value is checked against its own bounds, so nothing converts
    silently (D27).
@@ -35,11 +37,13 @@
 *Tests:* `bare_int_up_to_64_bits`, `bare_int_over_64_bits_refused`, `signed_needs_65_bits_refused`,
 `wide_picks_its_width`, `wide_refused_when_64_bits_fit`, `wide_bounds_still_checked`, `wide_int_written_out`,
 `width_too_small_refused`, `unsigned_holds_no_negatives`, `signed_width`, `signedness_without_width_open`,
-`big_numbers_stay_exact`.
+`big_numbers_stay_exact`, `exact_width_alone`, `exact_width_whole_range_spelled_out`.
 
 ## 3.3 Literals
 
 1. A number is written in decimal digits, with `_` allowed between them for reading: `86_399`.
 2. A number may not run straight into a word: `3x4` is refused; `x` needs spaces around it (D34).
 3. Hex numbers (`0x…`) are numbers (D34); the oracle doesn't read them yet.
-4. Decimal literals such as `1.5` need an imported float or fixed-point type (D22, D25); see section 9.
+4. Decimal literals such as `1.5` need a float type (built in, D154) or an imported fixed-point or decimal type
+   (D22, D25); floats are not written here yet (section 10), and the oracle reports them as not built.
+   *Tests:* `float_literal_not_built`.

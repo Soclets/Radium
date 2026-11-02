@@ -14,5 +14,5 @@ From D33, and D146 for rule 4. The repo's tagline promises "glow in the dark via
 
 A subject that is hard (inline assembly, hardware registers) stays hard; syntax can't fix that and doesn't try.
 
-**The one deliberate exception:** `.l.`, an Easter-egg spelling of `satisfies` (D149), kept as a joke in the spirit
+**The one deliberate exception:** `.|.` (one token), an Easter-egg spelling of `satisfies` (D149), kept as a joke in the spirit
 of Rust's turbofish. It breaks rules 1 and 3 on purpose, and nothing else may cite it as a precedent.

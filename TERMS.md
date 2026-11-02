@@ -44,6 +44,7 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | proof certificate | `ProofCertificate` | A solver's step-by-step proof, re-checked by the proof checker | D12 | |
 | proof checker | `ProofChecker` | The small, Verus-verified program that re-checks proof certificates | D12, D16 | |
 | isotope | `Isotope` | A compiler extension: trusted, not proven | D23 | plugin, limb |
+| Fallout | `fallout` | Radium's package manager, and its command | D150 | package manager (as a name), `curie add` |
 | compound | `Compound` | A library written in Radium: proven like any other code | D23 | kit, package |
 | struct | `Struct` | Named fields stored together as one value | D58 | record |
 | tagged union | `TaggedUnion` | `union.tagged`: a value that is one of several named cases, which may carry data | D59 | enum, sum type, variant |
@@ -67,6 +68,7 @@ concept is renamed, its old name moves to the "Not used" column so the D18 check
 | lent.mut (parameter) | `Lent.mut` | A parameter the function may change; the caller keeps the value (call side: `Lend.mut`) | D91 | `Lend.mut` in parameters |
 | given (parameter) | `Given` | A parameter the function owns from then on (call side: `Give` or `Copy`) | D91 | `Give` in parameters, owned |
 | stored borrow | `Lend from`, `Lend.mut from` | A borrow kept in a name, a result, a field or an item, naming its source | D49, D126, D135 | reference, `&`, `&mut` |
+| baked function | `fn.pure.baked` | A pure function that a `const` may call, its value worked out while compiling | D155, D156 | `constexpr`, `const fn`, `comptime`, `fn.pure.const` |
 | named source | `` `text` `` | The name a struct gives the source it borrows from; a borrow from a parameter names the parameter instead | D49, D126 | lifetime (as Radium's word), `'a` |
 | lasts at least | `lasts_at_least` | A source that lives at least as long as another (equal is allowed) | D127 | `outlives`, `lasts at_least` |
 | program (source) | `program` | The source that lasts until the program ends: text and `const` values written in the code | D127 | `'static`, `forever`, `Lend.forever` |

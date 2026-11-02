@@ -9,7 +9,8 @@
 | `std::list` and the maps | D64, D66, D70 |
 | Function collections (`narrowings.fn`), presets, `defaults.fixed` | D57 |
 | Generics: `?T`, `interface`, `type_set` | D69 |
-| Imports: isotopes (`@`) and compounds; floats, decimals and decimal literals | D22–D25, D28, D104 |
+| Binary floats: built in, ranged, identical on every machine | D24, D25, D153, D154 |
+| Imports: isotopes (`@`) and compounds; decimals and decimal literals | D22, D23, D25, D28, D104 |
 | Termination, stack and heap | D7, D8 |
 | Build modes and marked binaries | D9, D10 |
 | Deadlines | D82 |

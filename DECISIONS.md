@@ -242,7 +242,7 @@ Proposed by design claude, owner: "yes". Same as CyborgPL: **owner** (decides th
 **authors** (the owner and the sessions), **contributors** (outside people), **writer** (writes a Radium program),
 **user** (uses a writer's final product). Listed in `TERMS.md`.
 
-## D22 — Floats and decimals are imported (2026-10-29)
+## D22 — Floats and decimals are imported (2026-10-29; binary floats built in since D154)
 
 Owner: "floats & decimals are an import." After learning that integers work on every target with identical results
 (emulated where the hardware lacks a width, multiply or divide), while many small chips have no float hardware or only
@@ -308,7 +308,7 @@ every value against its range; nothing converts silently.
 
 ## D28 — `@` marks what an isotope provides (2026-10-29; `%` changed to `@` on 2026-10-30)
 
-**Changed 2026-10-30** (owner proposed, "yes"): the mark is **`@`**, not `%`: `@float.bin.32_bit`,
+**Changed 2026-10-30** (owner proposed, "yes"): the mark is **`@`**, not `%` (floats themselves built in since D154): `@float.bin.32_bit`,
 `@float.@deci.32_bit`. `%` reads as remainder or a format placeholder in other languages; `@` already means "handled
 specially by the compiler" in several (annotations, decorators, attributes). The rules below are unchanged, with `@` in
 place of `%`.
@@ -2404,6 +2404,105 @@ Owner's design: Radium gets **`.l.`**, a meme in the spirit of Rust's turbofish 
 (D34) and one meaning per mark (D33) on purpose. Design claude recommended an Easter egg over replacing `satisfies`; owner: "Easter". **`.l.` is an
 Easter-egg alternative**: `reading satisfies ordered;` stays the normal spelling, and `reading .l. ordered;` means the
 same.
+
+Owner then asked whether a pipe should replace the `l`; design claude: it would spend the pipe, kept free for later
+(likely several cases in one `match` arm); owner: the dots delimit it, as `->` didn't use up `-` or `>`. Owner:
+"Yes". **The Easter egg is `.|.`, read as one token**: `reading .|. ordered;`. A lone pipe stays free. (It looks more
+like the meme, has no `l`/`I`/`1` font trouble, and can't be mistaken for a `.` narrowing.)
+
+## D150 — The package manager is Fallout (2026-11-01)
+
+Owner's name, after design claude weighed Fallout against Ore, `curie add`, Ra-dio (owner's pun: Ra, radium's symbol,
+and "radio"), Polonium, Pierre, Dose, Yellowcake and others: "Fallout, fuck it. Fallout is the PM". **Radium's
+package manager is Fallout**, command `fallout` (`fallout add netcode`). Its dark meaning fits the brand, as Radium's
+own does ("slowly kills you"). Design claude noted the one risk: *Fallout* is Bethesda's game series and trademark,
+and Radium's audience is game code (D148); the likely worst case is a request to rename. Precautions: the plain word
+only, no artwork or style from the games, no suggested link to Bethesda, a trademark check before anything is
+published, and a rename if anyone asks.
+
+## D151 — An exact width alone means its whole range (2026-11-01)
+
+Owner asked whether `-> int8` could be written; design claude: no such type, and a width with no bounds wasn't
+decided; owner: "can we add that?"; design claude proposed it; owner: "yes". **`int.signed.N_bit` or
+`int.unsigned.N_bit` written alone holds its whole range**: `int.signed.8_bit` is −128 to 127, matching C's `int8_t`
+(useful under D148). The width fixes the range exactly, so nothing is guessed. **Writing the whole range out is refused**
+as a spelled-out default (D39): `int.signed.8_bit[min: -128, max: 127]` → `int.signed.8_bit`. Narrower bounds stay
+fine. A bare `int` and `int.wide` still always state their bounds (D14, D27).
+
+## D152 — `fn.main` may give back an exit status (2026-11-01)
+
+Owner asked to add it. Design claude first proposed a named result (`std::exit`, success or failed with a code), to
+avoid C's "0 means success"; owner: `-> void` stays for anyone who doesn't want a number, and "other programs could
+read the returned number as anything" (`grep` returns 1 for no match, which isn't a failure); owner: "yes". **`fn.main`
+gives back `void` or an integer whose bounds sit inside 0 to 255**: `fn.main [] -> int[min: 0, max: 2]:`. The number
+is the exit status, passed on unchanged; bounds outside 0 to 255 are refused, so C's "`exit(256)` reports success"
+can't happen. **A `-> void` program that finishes reports success** to the system (0): `void` still means `fn.main`
+gives nothing back, and the status comes from the runtime, as in Rust, Python and C. A failed check stops the program
+with a failure status (D114).
+
+## D153 — Floats give the same result on every machine (2026-11-01)
+
+Design claude raised, from D148, that games kept in sync need every machine to compute the same float result bit for
+bit, which C++ doesn't promise (merged multiply-adds, reordered sums, x87's 80 bits, differing `sin`/`cos`); teams that
+need it already pay the speed through scattered flags, fixed-point libraries and their own maths functions. Owner:
+"record that Radium will have that kind of float thingy". **Radium's binary floats (D22, D24) give bit-identical
+results on every machine by default**, as its integers do (D22, D104): strict IEEE rounding, nothing merged or
+reordered unless written, and maths functions that are always correctly rounded. The speed cost is accepted and paid
+in one visible place instead of by accident. Open: how it is spelled and built, and whether a narrowing for "fast,
+not identical" is added later.
+
+## D154 — Binary floats are built in (2026-11-01)
+
+With D153, binary floats give identical results on every target, so they meet D104's test for being built in
+(rule 2 of `design-rules/built-in-or-import.md`). Design claude laid out keeping them an isotope instead, since
+correctly rounded maths is a large body of trusted code; owner asked whether integers need software on some chips
+(yes: division on small chips, 64-bit maths on 32-bit ones, and `int.wide` everywhere) and whether software is that
+slow (on chips with float hardware, D153's basic maths costs nothing); owner: "bi" (built in). **Binary floats are
+built into the language**, like integers: no import and no `@`, so D28's `@float.bin.32_bit` becomes
+`float.binary.32_bit` (`bin` is written in full as `binary`, D94; owner caught it). **This reverses D22 for binary floats**; decimals and fixed-point stay compounds (D22, D104 rule
+1). The ranges (D24), the literal mark (D25) and D153's identical results stand. The correctly rounded maths library
+is part of the compiler and runtime's trusted code. Open: which widths, the full spelling, and the literal mark.
+
+## D155 — A `const` may call `fn.pure` functions (2026-11-02)
+
+Owner asked whether Radium should have Zig's `comptime`; design claude split it into three parts (running ordinary
+code while compiling, generics through types as values, reflection that generates code) and recommended only the
+first, since the second would undo D69's generics checked once against their bounds and the third makes proofs and
+messages much worse; owner: "yes". **A `const`'s value may call `fn.pure` functions (D51), and is worked out while
+compiling**:
+
+```
+const $week: int[min: 0, max: 31_536_000] = seconds_in(7);    // 604_800, worked out while compiling
+```
+
+Amends D30, where a `const` used only numbers, `true`, `false` and other `const`s. The finished program holds just
+the value; Geiger knows it exactly; a check that fails while working it out refuses the build. Lookup tables wait on
+`const` arrays, which are still open (D30).
+
+## D156 — Functions usable in a `const` are `fn.pure.baked` (2026-11-02)
+
+Design claude first proposed no mark, since `fn.pure` already promises what running while compiling needs; owner: "a
+mark isn't so scary"; design claude: a mark moves the error to the right place: an edit that makes the function
+unrunnable while compiling is refused on the function, not in every `const` that uses it, maybe in other compounds.
+Cold test (owner): `fn.pure.const` read as "a pure const function, whatever that means" (it also means something else
+in C++, a function that doesn't change its object); `fn.pure.compile_time`, `fn.pure.comptime` and `fn.pure.baked`
+all read as "known or computed at compile time". Owner proposed `baked`, noting developers say a value "is baked at
+compile time"; owner: "yes". **A function a `const` may call is narrowed `fn.pure.baked`** (D26, D51, D155):
+
+```
+fn.pure.baked seconds_in [$days: int[min: 0, max: 365]] -> int[min: 0, max: 31_536_000]:
+    return $days x 86_400;
+end fn seconds_in
+
+const $week: int[min: 0, max: 31_536_000] = seconds_in(7);     // fine
+const $day: int[min: 0, max: 86_400] = other_pure_fn(1);        // refused: not `fn.pure.baked`
+```
+
+A `fn.pure.baked` function must stay runnable while compiling, so one that reaches into a shield or C code (D6) is
+refused on the function. Design claude asked whether a baked function may also run while the program runs (the cold
+test read the names as "computed at compile time"), recommending yes so the same maths is never written twice;
+owner: "yes". **A `fn.pure.baked` function may also be called while the program runs**: `baked` means it *can* be
+baked, and every `const` that uses it is.
 
 ---
 

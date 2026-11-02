@@ -17,6 +17,10 @@
 1. `fn` promises nothing either way about side effects (D51).
 2. `fn.pure` is a function in the maths sense: no side effects, the same result for the same arguments (D51). It can't
    print, and can call only other `fn.pure` functions.
+   **`fn.pure.baked`** narrows it further: a `const` may call it, and that value is worked out while compiling; a check
+   that fails there refuses the build (D155, D156). It can also be called while the program runs. It stays runnable
+   while compiling, so it calls only other baked functions (provisional).
+   *Tests:* `baked_also_runs_while_running`, `baked_calls_unbaked_refused`.
 3. `fn.main` is where the program starts (D101); see 1.1.
    *Tests:* `pure_cannot_print`.
 
