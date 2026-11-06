@@ -2,7 +2,7 @@
 
 # Radium
 
-> **Abandoned.** Radium's ideas live on in Cyborg, a new general systems language merging ideas from CyborgPL and
+> **Abandoned.** Radium's ideas live on in [Cyborg](https://github.com/Soclets/Cyborg), a new general systems language merging ideas from CyborgPL and
 > Radium. This repository stays as a reference; no further decisions are made here (D158).
 
 *Slowly kills you via the steep learning curve, and slow compile times. Glow in the dark via the clear syntax. It
