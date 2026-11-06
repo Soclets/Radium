@@ -2504,6 +2504,23 @@ test read the names as "computed at compile time"), recommending yes so the same
 owner: "yes". **A `fn.pure.baked` function may also be called while the program runs**: `baked` means it *can* be
 baked, and every `const` that uses it is.
 
+## D157 — `_` is the only way to group digits (2026-11-02)
+
+Owner asked whether to add quoted numbers, `N"4,294,967,295"`, like a quoted name `$"…"` (D32); design claude
+recommended against: `,` is the decimal point in much of Europe (`N"1,500"`: fifteen hundred, or one and a half?),
+it would be a second spelling (D33), quotes mean text everywhere else, and every number can already be written
+plainly, while a quoted name exists for names that can't be. Owner: "yes". **Digits are grouped only with `_`**:
+`4_294_967_295`. No quoted numbers.
+
+## D158 — Radium is abandoned in favour of Cyborg (2026-11-06)
+
+Owner, 2026-11-03: "Abandoned, I think. But this is currently just an idea", on starting **Cyborg**, a general systems
+language from scratch, merging ideas from CyborgPL and Radium ("Not literally merging, more like merging ideas"). Then
+2026-11-06, once Cyborg had its own design session: "didn't I say Cyborg is a merge of Ra and CyborgPL? So, those are
+abandoned?"; asked whether to close Radium out, owner: "yea". **Radium is abandoned.** No further decisions are made
+here, and this repository stays as it is, public and intact, as a reference: its decisions, standard and oracle remain
+readable and their numbers stay valid. Whatever was open here stays open here, and Cyborg decides for itself.
+
 ---
 
 ## Open

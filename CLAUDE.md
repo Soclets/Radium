@@ -5,6 +5,9 @@ with `DECISIONS.md` (every decision, numbered), `TERMS.md` (one name per concept
 rules every new choice is checked against), `implementation-rules/` (the rules for the code that implements it) and
 `standard/` (SSS: Radium, what every construct does).
 
+**Abandoned (D158):** the owner moved on to Cyborg. This repository is a reference; make no new decisions here unless the
+owner says so.
+
 ## Ground rules
 
 - **Design authority is the owner's.** Claude sessions propose and recommend; the owner decides syntax, naming,

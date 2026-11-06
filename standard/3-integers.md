@@ -41,7 +41,8 @@
 
 ## 3.3 Literals
 
-1. A number is written in decimal digits, with `_` allowed between them for reading: `86_399`.
+1. A number is written in decimal digits, with `_` allowed between them for reading: `86_399`. `_` is the only way
+   to group digits; there are no quoted numbers (D157).
 2. A number may not run straight into a word: `3x4` is refused; `x` needs spaces around it (D34).
 3. Hex numbers (`0x…`) are numbers (D34); the oracle doesn't read them yet.
 4. Decimal literals such as `1.5` need a float type (built in, D154) or an imported fixed-point or decimal type
